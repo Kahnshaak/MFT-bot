@@ -1,6 +1,5 @@
 import json
 import os
-import MFTLogger.py
 
 DEFAULT_CONFIG = {
         "prefix": "!",
@@ -28,6 +27,7 @@ def load_config():
                 print(f"Missing Key: {key}\nAdding default to config...")
 
         return config
+
     except (json.JSONDecodeError, IOError) as e:
     print(f"Error loading config: {e}. Creating default config...")
     save_config(DEFAULT_CONFIG)
@@ -37,5 +37,11 @@ def save_config(config: str):
     """Saves conguration options to the config.file in the main directory"""
     try:
         with open(CONFIG_FILE, "w") as c:
-            
+            json.dump(config, f, indent=4)
+        print("Config file updated.")
+
+    except IOError as e:
+        print(f"Failed to update config: {e}")
+
+config = load_config()
 
