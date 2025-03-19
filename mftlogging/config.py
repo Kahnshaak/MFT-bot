@@ -8,7 +8,7 @@ DEFAULT_CONFIG = {
         "logging_level": "INFO"
 }
 
-CONFIG_FILE = "../config.json"
+CONFIG_FILE = os.path.join(os..path.dirname(os.path.dirname(__file__)), "config.json")
 
 def load_config():
     """Loads the bot config file, and checks all needed values are there"""
@@ -26,6 +26,7 @@ def load_config():
                 config[key] = value
                 print(f"Missing Key: {key}\nAdding default to config...")
 
+        save_config(config)
         return config
 
     except (json.JSONDecodeError, IOError) as e:
@@ -33,11 +34,11 @@ def load_config():
     save_config(DEFAULT_CONFIG)
     return DEFAULT_CONFIG
 
-def save_config(config: str):
+def save_config(config):
     """Saves conguration options to the config.file in the main directory"""
     try:
         with open(CONFIG_FILE, "w") as c:
-            json.dump(config, f, indent=4)
+            json.dump(config, c, indent=4)
         print("Config file updated.")
 
     except IOError as e:
