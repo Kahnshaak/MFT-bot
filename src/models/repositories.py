@@ -7,9 +7,14 @@ from datetime import datetime, date
 from typing import Dict, List, Optional, Any, Type, TypeVar, Generic
 from bson import ObjectId
 
-from src.database.manager import DatabaseManager
-from src.utils.exceptions import DocumentNotFoundError, DatabaseError
-from src.utils.logging_config import LoggerMixin
+try:
+    from database.manager import DatabaseManager
+    from utils.exceptions import DocumentNotFoundError, DatabaseError
+    from utils.logging_config import LoggerMixin
+except ImportError:
+    from src.database.manager import DatabaseManager
+    from src.utils.exceptions import DocumentNotFoundError, DatabaseError
+    from src.utils.logging_config import LoggerMixin
 
 from .base import BaseDocument
 from .event import Event, EventState, PollType, RSVPStatus

@@ -184,13 +184,18 @@ class EventBus(LoggerMixin):
         # Process through middleware
         for middleware in self._middleware:
             try:
-                event = middleware(event)
+                if asyncio.iscoroutinefunction(middleware):
+                    event = await middleware(event)
+                else:
+                    event = middleware(event)
             except Exception as e:
                 self.logger.error(
                     "Middleware error",
                     middleware=middleware.__name__,
                     error=str(e)
                 )
+                # Emit error event for middleware failures
+                await self._emit_error_event(e, middleware.__name__, event)
         
         # Add to history
         self._add_to_history(event)
@@ -247,17 +252,8 @@ class EventBus(LoggerMixin):
                 exc_info=True
             )
             
-            # Emit error event
-            await self.emit(
-                EventType.ERROR_OCCURRED,
-                {
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "callback": callback.__name__,
-                    "original_event_type": event.event_type.value
-                },
-                source="event_bus"
-            )
+            # Emit error event (avoid recursion by calling _emit_error_event directly)
+            await self._emit_error_event(e, callback.__name__, event)
     
     def _add_to_history(self, event: Event) -> None:
         """Add event to history with size management."""
@@ -266,6 +262,46 @@ class EventBus(LoggerMixin):
         # Trim history if it gets too large
         if len(self._event_history) > self._max_history_size:
             self._event_history = self._event_history[-self._max_history_size:]
+    
+    async def _emit_error_event(self, error: Exception, source_name: str, original_event: Event) -> None:
+        """
+        Emit an error event without going through middleware to avoid recursion.
+        
+        Args:
+            error: The exception that occurred
+            source_name: Name of the component that caused the error
+            original_event: The original event being processed
+        """
+        error_event = Event(
+            event_type=EventType.ERROR_OCCURRED,
+            data={
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+                "source_name": source_name,
+                "original_event_type": original_event.event_type.value
+            },
+            source="event_bus",
+            guild_id=original_event.guild_id,
+            user_id=original_event.user_id
+        )
+        
+        # Add to history
+        self._add_to_history(error_event)
+        
+        # Get subscribers for error events
+        subscribers = self._subscribers.get(EventType.ERROR_OCCURRED, [])
+        
+        if subscribers:
+            # Process subscribers directly without middleware to avoid recursion
+            tasks = []
+            for callback, priority in subscribers:
+                task = asyncio.create_task(
+                    self._safe_callback_execution(callback, error_event)
+                )
+                tasks.append(task)
+            
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
     
     def get_recent_events(
         self, 

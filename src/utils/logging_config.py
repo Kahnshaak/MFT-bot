@@ -12,7 +12,10 @@ from typing import Optional
 import structlog
 from colorama import Fore, Style, init as colorama_init
 
-from src.config.settings import Settings
+try:
+    from config.settings import Settings
+except ImportError:
+    from src.config.settings import Settings
 
 
 # Initialize colorama for cross-platform colored output

@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", env="ENVIRONMENT")
     
     # Security
-    allowed_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
+    allowed_origins: str = Field(
+        default="http://localhost:3000,http://localhost:8000",
         env="ALLOWED_ORIGINS"
     )
     
@@ -59,6 +59,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
         
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -70,6 +71,17 @@ class Settings(BaseSettings):
                 for origin in self.allowed_origins.split(",")
                 if origin.strip()
             ]
+    
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        """Get allowed origins as a list."""
+        if isinstance(self.allowed_origins, str):
+            return [
+                origin.strip() 
+                for origin in self.allowed_origins.split(",")
+                if origin.strip()
+            ]
+        return self.allowed_origins
     
     @property
     def is_development(self) -> bool:

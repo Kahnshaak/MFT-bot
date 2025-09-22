@@ -10,14 +10,24 @@ from typing import Any, Callable, Optional, Type, Union, Dict
 import discord
 from discord.ext import commands
 
-from src.utils.exceptions import (
-    GameNightBotException, 
-    ErrorCode, 
-    DiscordAPIError, 
-    RateLimitedError,
-    PermissionDeniedError
-)
-from src.utils.logging_config import get_logger
+try:
+    from utils.exceptions import (
+        GameNightBotException, 
+        ErrorCode, 
+        DiscordAPIError, 
+        RateLimitedError,
+        PermissionDeniedError
+    )
+    from utils.logging_config import get_logger
+except ImportError:
+    from src.utils.exceptions import (
+        GameNightBotException, 
+        ErrorCode, 
+        DiscordAPIError, 
+        RateLimitedError,
+        PermissionDeniedError
+    )
+    from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

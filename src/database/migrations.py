@@ -9,8 +9,12 @@ from typing import Dict, List, Optional, Any
 from bson import ObjectId
 
 from .manager import DatabaseManager
-from src.utils.logging_config import get_logger, LoggerMixin
-from src.utils.exceptions import DatabaseError
+try:
+    from utils.logging_config import get_logger, LoggerMixin
+    from utils.exceptions import DatabaseError
+except ImportError:
+    from src.utils.logging_config import get_logger, LoggerMixin
+    from src.utils.exceptions import DatabaseError
 
 
 class Migration(ABC, LoggerMixin):
