@@ -116,6 +116,8 @@ class DatabaseError(GameNightBotException):
     """Base class for database-related errors."""
     
     def __init__(self, message: str, operation: Optional[str] = None, **kwargs):
+        # Remove error_code from kwargs if present to avoid conflict
+        kwargs.pop('error_code', None)
         super().__init__(
             message,
             error_code=ErrorCode.DATABASE_OPERATION_ERROR,

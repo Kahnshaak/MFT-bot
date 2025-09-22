@@ -10,14 +10,14 @@ from typing import Any, Callable, Optional, Type, Union, Dict
 import discord
 from discord.ext import commands
 
-from utils.exceptions import (
+from src.utils.exceptions import (
     GameNightBotException, 
     ErrorCode, 
     DiscordAPIError, 
     RateLimitedError,
     PermissionDeniedError
 )
-from utils.logging_config import get_logger
+from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

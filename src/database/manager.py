@@ -15,14 +15,14 @@ from pymongo.errors import (
     OperationFailure
 )
 
-from utils.logging_config import get_logger, LoggerMixin
-from utils.exceptions import (
+from src.utils.logging_config import get_logger, LoggerMixin
+from src.utils.exceptions import (
     DatabaseConnectionError,
     DatabaseError,
     DocumentNotFoundError,
     GameNightBotException
 )
-from utils.error_handler import retry_on_failure
+from src.utils.error_handler import retry_on_failure
 
 
 class DatabaseManager(LoggerMixin):
