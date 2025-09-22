@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: gamenight_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: gamenight_bot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - gamenight_network
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gamenight_bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    volumes:
+      - ./logs:/app/logs
+      - ./src:/app/src
+    depends_on:
+      - mongodb
+    networks:
+      - gamenight_network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: gamenight_web
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+    networks:
+      - gamenight_network
+
+volumes:
+  mongodb_data:
+
+networks:
+  gamenight_network:
+    driver: bridge

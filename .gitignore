@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# Project specific
+logs/*.log
+logs/*.error.log
+.DS_Store

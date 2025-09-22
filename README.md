@@ -1,4 +1,135 @@
-# MFT-bot
+# Discord Game Night Scheduling Bot
+
+A comprehensive Discord bot for organizing game nights with automated scheduling, polling, and event management.
+
+## Features
+
+- **Automated Event Creation**: Create events with interactive date, time, and game selection polls
+- **Recurring Events**: Set up weekly or monthly recurring game nights
+- **User Preferences**: Timezone support, game interests, and notification preferences  
+- **Game Interest System**: Register interest in games and get pinged when others want to play
+- **Web Dashboard**: Manage bot configuration and view analytics through a web interface
+- **Comprehensive Logging**: Structured logging with file rotation and multiple log levels
+- **Health Monitoring**: Built-in health checks for database and Discord API connectivity
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.11+ (optional, for local development)
+- Discord Bot Token
+
+### Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd MFT-bot
+   ```
+
+2. **Run the setup script**
+   ```bash
+   ./scripts/dev-setup.sh
+   ```
+
+3. **Configure your bot**
+   - Edit `.env` file with your Discord bot token and settings
+   - Get your Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
+
+4. **Start the bot**
+   ```bash
+   # Using Docker (recommended)
+   docker-compose up -d
+   
+   # Or run locally with virtual environment
+   source venv/bin/activate
+   python3 src/bot.py
+   ```
+
+### Configuration
+
+Copy `.env.example` to `.env` and configure the following required settings:
+
+```env
+# Discord Bot Configuration
+DISCORD_TOKEN=your_discord_bot_token_here
+DISCORD_CLIENT_ID=your_discord_client_id_here
+DISCORD_CLIENT_SECRET=your_discord_client_secret_here
+
+# Database Configuration (MongoDB)
+DATABASE_URL=mongodb://admin:password@localhost:27017/gamenight_bot?authSource=admin
+
+# Web Dashboard
+JWT_SECRET=your_jwt_secret_key_here
+```
+
+## Development
+
+### Project Structure
+
+```
+src/
+├── bot.py                 # Main bot entry point
+├── config/               # Configuration management
+├── core/                 # Core framework components
+│   ├── event_bus.py      # Inter-component communication
+│   ├── security_manager.py # Authentication & authorization
+│   ├── metrics_collector.py # Performance monitoring
+│   └── health_monitor.py # System health checks
+├── database/             # Database layer
+├── models/               # Data models
+├── cogs/                 # Discord bot cogs (commands)
+└── utils/                # Utilities and helpers
+```
+
+### Running Tests
+
+```bash
+# Test the setup
+./scripts/test-setup.sh
+
+# Run unit tests (when implemented)
+pytest tests/
+```
+
+### Docker Commands
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f bot
+
+# Stop services
+docker-compose down
+
+# Rebuild containers
+docker-compose build --no-cache
+```
+
+## Architecture
+
+The bot follows a modular architecture with:
+
+- **Event Bus System**: Loose coupling between components through publish-subscribe events
+- **Security Manager**: Centralized permission and authentication handling
+- **Metrics Collection**: Performance monitoring and usage analytics
+- **Health Monitoring**: Automated system health checks and alerting
+- **Database Layer**: MongoDB with connection pooling and error handling
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ## What is this bot even for??
 With members of my friend group graduating college, moving away, having kids, and moving on with life in general, we wanted a way that we could keep in touch and still enjoy playing games together.
 Eventually the concept of "Mandatory Fun Time" was born; a time that we would not make any plans, and just hang out doing whatever.
