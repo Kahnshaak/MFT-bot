@@ -1281,6 +1281,20 @@ class EventsCog(commands.Cog, LoggerMixin):
             source="events_cog",
             guild_id=event.guild_id
         )
+        
+        # Emit scheduled event for Discord integration
+        await self.event_bus.emit(
+            EventType.EVENT_SCHEDULED,
+            {
+                "event_id": str(event.id),
+                "title": event.title,
+                "scheduled_date": event.schedule.selected_date.isoformat() if event.schedule.selected_date else None,
+                "scheduled_time": event.schedule.selected_time.isoformat() if event.schedule.selected_time else None,
+                "timezone": event.schedule.timezone
+            },
+            source="events_cog",
+            guild_id=event.guild_id
+        )
     
     async def add_rsvp(
         self,
@@ -1475,6 +1489,196 @@ class EventsCog(commands.Cog, LoggerMixin):
         embed.set_footer(text=f"Event: {event.title}")
         
         return embed
+    
+    @commands.slash_command(name="calendar", description="Export events to calendar file")
+    async def export_calendar(
+        self,
+        ctx: discord.ApplicationContext,
+        days_ahead: int = discord.Option(
+            int,
+            description="Number of days ahead to include (default: 30)",
+            default=30,
+            min_value=1,
+            max_value=365
+        )
+    ):
+        """Export scheduled events to an iCalendar (.ics) file."""
+        try:
+            await ctx.defer()
+            
+            # Get scheduled events for the guild
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.utcnow() + timedelta(days=days_ahead)
+            
+            events_cursor = self.bot.database.events.find({
+                'guild_id': str(ctx.guild.id),
+                'state': EventState.SCHEDULED.value,
+                'schedule.selected_date': {
+                    '$gte': datetime.utcnow().date().isoformat(),
+                    '$lte': cutoff_date.date().isoformat()
+                }
+            })
+            
+            events = []
+            async for event_doc in events_cursor:
+                events.append(Event(**event_doc))
+            
+            if not events:
+                await ctx.followup.send(
+                    f"❌ No scheduled events found in the next {days_ahead} days.",
+                    ephemeral=True
+                )
+                return
+            
+            # Generate calendar content
+            calendar_content = self.bot.discord_events.generate_calendar_export(events)
+            
+            # Create file
+            import io
+            calendar_file = io.BytesIO(calendar_content.encode('utf-8'))
+            calendar_file.seek(0)
+            
+            filename = f"gamenight_events_{ctx.guild.name}_{datetime.utcnow().strftime('%Y%m%d')}.ics"
+            discord_file = discord.File(calendar_file, filename=filename)
+            
+            embed = discord.Embed(
+                title="📅 Calendar Export",
+                description=f"Exported **{len(events)}** scheduled events from the next {days_ahead} days.",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="How to Use",
+                value="Download the .ics file and import it into your calendar app (Google Calendar, Outlook, Apple Calendar, etc.)",
+                inline=False
+            )
+            
+            await ctx.followup.send(embed=embed, file=discord_file)
+            
+            # Log the export
+            self.logger.info(
+                f"Calendar export generated for guild {ctx.guild.id} by user {ctx.user.id}, "
+                f"{len(events)} events, {days_ahead} days ahead"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error exporting calendar: {e}", exc_info=True)
+            await ctx.followup.send(
+                "❌ An error occurred while generating the calendar export.",
+                ephemeral=True
+            )
+    
+    async def sync_discord_rsvps(self, event: Event) -> int:
+        """Sync RSVPs from Discord scheduled event to bot event."""
+        if not self.bot.discord_events:
+            return 0
+        
+        return await self.bot.discord_events.sync_rsvps_from_discord(event)
+    
+    @commands.slash_command(name="sync-rsvps", description="Manually sync RSVPs from Discord scheduled event")
+    @require_permission(Permission.MANAGE_EVENTS)
+    async def sync_rsvps_command(
+        self,
+        ctx: discord.ApplicationContext,
+        event_id: str = discord.Option(
+            str,
+            description="Event ID to sync RSVPs for"
+        )
+    ):
+        """Manually sync RSVPs from Discord scheduled event."""
+        try:
+            await ctx.defer(ephemeral=True)
+            
+            # Get the event
+            event = await self.get_event(event_id)
+            if not event:
+                await ctx.followup.send("❌ Event not found.", ephemeral=True)
+                return
+            
+            if event.guild_id != str(ctx.guild.id):
+                await ctx.followup.send("❌ Event not found in this server.", ephemeral=True)
+                return
+            
+            if not event.discord_event_id:
+                await ctx.followup.send("❌ This event is not linked to a Discord scheduled event.", ephemeral=True)
+                return
+            
+            # Sync RSVPs
+            synced_count = await self.sync_discord_rsvps(event)
+            
+            if synced_count > 0:
+                await ctx.followup.send(
+                    f"✅ Synced **{synced_count}** RSVPs from Discord scheduled event.",
+                    ephemeral=True
+                )
+            else:
+                await ctx.followup.send(
+                    "ℹ️ No new RSVPs to sync from Discord scheduled event.",
+                    ephemeral=True
+                )
+            
+        except Exception as e:
+            self.logger.error(f"Error syncing RSVPs: {e}", exc_info=True)
+            await ctx.followup.send(
+                "❌ An error occurred while syncing RSVPs.",
+                ephemeral=True
+            )
+    
+    @commands.slash_command(name="retry-discord-event", description="Retry creating Discord scheduled event")
+    @require_permission(Permission.MANAGE_EVENTS)
+    async def retry_discord_event(
+        self,
+        ctx: discord.ApplicationContext,
+        event_id: str = discord.Option(
+            str,
+            description="Event ID to retry Discord event creation for"
+        )
+    ):
+        """Retry creating a Discord scheduled event for a bot event."""
+        try:
+            await ctx.defer(ephemeral=True)
+            
+            # Get the event
+            event = await self.get_event(event_id)
+            if not event:
+                await ctx.followup.send("❌ Event not found.", ephemeral=True)
+                return
+            
+            if event.guild_id != str(ctx.guild.id):
+                await ctx.followup.send("❌ Event not found in this server.", ephemeral=True)
+                return
+            
+            if not event.is_scheduled():
+                await ctx.followup.send("❌ Event must be scheduled before creating Discord event.", ephemeral=True)
+                return
+            
+            if event.discord_event_id:
+                await ctx.followup.send("❌ Event already has a Discord scheduled event.", ephemeral=True)
+                return
+            
+            # Attempt to create Discord event
+            if not self.bot.discord_events:
+                await ctx.followup.send("❌ Discord events integration not available.", ephemeral=True)
+                return
+            
+            discord_event_id = await self.bot.discord_events.create_discord_event(event)
+            
+            if discord_event_id:
+                await ctx.followup.send(
+                    f"✅ Successfully created Discord scheduled event for **{event.title}**.",
+                    ephemeral=True
+                )
+            else:
+                await ctx.followup.send(
+                    f"❌ Failed to create Discord scheduled event for **{event.title}**. Check logs for details.",
+                    ephemeral=True
+                )
+            
+        except Exception as e:
+            self.logger.error(f"Error retrying Discord event creation: {e}", exc_info=True)
+            await ctx.followup.send(
+                "❌ An error occurred while retrying Discord event creation.",
+                ephemeral=True
+            )
 
 
 async def setup(bot):

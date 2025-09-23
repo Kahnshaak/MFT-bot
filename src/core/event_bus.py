@@ -22,6 +22,13 @@ class EventType(Enum):
     EVENT_CANCELLED = "event_cancelled"
     EVENT_COMPLETED = "event_completed"
     EVENT_STATE_CHANGED = "event_state_changed"
+    EVENT_SCHEDULED = "event_scheduled"
+    
+    # Discord integration events
+    DISCORD_EVENT_CREATED = "discord_event_created"
+    DISCORD_EVENT_UPDATED = "discord_event_updated"
+    DISCORD_EVENT_CANCELLED = "discord_event_cancelled"
+    RSVP_SYNCED = "rsvp_synced"
     
     # Poll events
     POLL_CREATED = "poll_created"

@@ -21,6 +21,7 @@ from core.metrics_collector import MetricsCollector
 from core.health_monitor import HealthMonitor
 from core.validation_manager import ValidationManager
 from core.audit_logger import AuditLogger
+from core.discord_events_manager import DiscordEventsManager
 from database.manager import DatabaseManager
 from utils.logging_config import setup_logging
 
@@ -51,6 +52,7 @@ class GameNightBot(commands.Bot):
         self.health_monitor: Optional[HealthMonitor] = None
         self.validation: Optional[ValidationManager] = None
         self.audit_logger: Optional[AuditLogger] = None
+        self.discord_events: Optional[DiscordEventsManager] = None
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
@@ -71,6 +73,7 @@ class GameNightBot(commands.Bot):
             self.validation = ValidationManager()
             self.audit_logger = AuditLogger(self.database)
             self.health_monitor = HealthMonitor(self.database, self)
+            self.discord_events = DiscordEventsManager(self, self.event_bus, self.database)
             
             # Set up event bus middleware for metrics and audit logging
             self.event_bus.add_middleware(self._metrics_middleware)

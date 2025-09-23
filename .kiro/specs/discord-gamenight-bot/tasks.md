@@ -46,7 +46,7 @@
   - Add poll notification system for reminders and status updates
   - _Requirements: 1.1, 1.3, 1.4, 1.6_
 
-- [ ] 6. Integrate Discord scheduled events API
+- [x] 6. Integrate Discord scheduled events API
   - Implement Discord event creation with proper error handling and retries
   - Build bidirectional RSVP synchronization between bot and Discord events
   - Create event update propagation system for changes
