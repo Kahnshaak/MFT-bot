@@ -28,7 +28,7 @@
   - Integrate logging and error handling throughout all core systems
   - _Requirements: 6.1, 6.2, 6.4, 9.1, 9.5_
 
-- [ ] 4. Implement basic event management system
+- [x] 4. Implement basic event management system
   - Create Events cog with event creation command and modal interface
   - Implement event state machine (DRAFT → DATE_POLLING → TIME_POLLING → GAME_POLLING → SCHEDULED)
   - Build event data model with embedded polls and RSVP tracking
@@ -37,13 +37,13 @@
   - Add event validation and error handling for malformed input
   - _Requirements: 1.1, 1.2, 1.6, 9.1_
 
-- [ ] 5. Build polling system with interactive components
-  - Implement date selection polling with button interface for next 30 days
-  - Create time selection system with timezone-aware time slots
-  - Build game selection with multi-select dropdown and write-in options
-  - Add real-time vote counting with concurrent access handling
-  - Implement poll timeout management with automatic state transitions
-  - Create admin override system for poll management and tie resolution
+- [ ] 5. Enhance polling system with advanced interactive components
+  - Add poll timeout management with automatic state transitions and scheduling
+  - Implement tie-breaking mechanisms with runoff polls and admin resolution
+  - Create poll analytics and voting pattern tracking
+  - Add poll customization options (custom time slots, additional games)
+  - Implement poll persistence across bot restarts with view reconstruction
+  - Add poll notification system for reminders and status updates
   - _Requirements: 1.1, 1.3, 1.4, 1.6_
 
 - [ ] 6. Integrate Discord scheduled events API
@@ -56,57 +56,65 @@
   - _Requirements: 1.7, 9.1, 9.2_
 
 - [ ] 7. Implement user profile and preference system
-  - Create Users cog with profile management commands
-  - Build timezone preference system with automatic time conversion
-  - Implement availability scheduling with weekly recurring patterns
-  - Create notification preference management (channels, timing, frequency)
-  - Add user statistics tracking for attendance and game preferences
-  - Build user data export functionality for privacy compliance
+  - Create Users cog with profile management commands (/profile, /preferences)
+  - Build timezone preference system with automatic time conversion and validation
+  - Implement availability scheduling with weekly recurring patterns and conflict detection
+  - Create notification preference management (channels, timing, frequency, quiet hours)
+  - Add user statistics tracking for attendance and game preferences with analytics
+  - Build user data export functionality for privacy compliance (GDPR)
+  - Implement user onboarding flow for new server members
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 7.1, 7.2, 7.3_
 
 - [ ] 8. Build game interest and notification system
-  - Create Games cog with game interest registration commands
-  - Implement fuzzy matching for game name resolution and suggestions
-  - Build game ping system with user notification and mention functionality
-  - Add game popularity tracking and analytics
-  - Create notification frequency limiting to prevent spam
-  - Implement game alias management for common name variations
+  - Create Games cog with game interest registration commands (/games add, /games remove, /games list)
+  - Implement fuzzy matching for game name resolution and suggestions with confidence scoring
+  - Build game ping system with user notification and mention functionality (/games ping)
+  - Add game popularity tracking and analytics with trending games detection
+  - Create notification frequency limiting to prevent spam with user-configurable limits
+  - Implement game alias management for common name variations and abbreviations
+  - Add game categories and tagging system for better organization
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
 - [ ] 9. Implement notification and reminder system
-  - Create notification scheduling engine with database-backed queue
-  - Build reminder delivery system with multiple channel support (DM, server)
-  - Implement retry logic with exponential backoff for failed deliveries
-  - Add user preference filtering and timezone conversion for notifications
-  - Create notification types for events, polls, games, and admin alerts
-  - Build batch processing system for efficient notification delivery
+  - Create Notifications cog with notification management commands
+  - Build notification scheduling engine with database-backed queue and priority system
+  - Implement reminder delivery system with multiple channel support (DM, server, webhook)
+  - Add retry logic with exponential backoff for failed deliveries and dead letter queue
+  - Create user preference filtering and timezone conversion for notifications
+  - Build notification types for events, polls, games, and admin alerts with templates
+  - Implement batch processing system for efficient notification delivery
+  - Add notification history and analytics for delivery tracking
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
 - [ ] 10. Create recurring events automation system
-  - Build Recurring cog with schedule configuration commands
-  - Implement cron-like scheduling with monthly and weekly patterns
-  - Create template-based event generation with variable substitution
-  - Add automatic poll triggering based on configured schedules
-  - Implement schedule pause/resume functionality with state management
-  - Create execution history tracking and error logging for failed triggers
+  - Build Recurring cog with schedule configuration commands (/recurring create, /recurring list, /recurring manage)
+  - Implement cron-like scheduling with monthly and weekly patterns and timezone support
+  - Create template-based event generation with variable substitution and dynamic content
+  - Add automatic poll triggering based on configured schedules with customizable timing
+  - Implement schedule pause/resume functionality with state management and conflict resolution
+  - Create execution history tracking and error logging for failed triggers with admin notifications
+  - Add recurring event preview and testing functionality
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 - [ ] 11. Build timestamp conversion utilities
-  - Create Timestamps cog with timezone conversion commands
-  - Implement Discord timestamp format generation for all supported formats
-  - Add timezone detection and validation with comprehensive timezone database
-  - Build time parsing system for natural language input
-  - Create timezone conversion helpers for cross-timezone coordination
-  - Add timestamp validation and error handling for invalid inputs
+  - Create Timestamps cog with timezone conversion commands (/time convert, /time zone, /time format)
+  - Implement Discord timestamp format generation for all supported formats with preview
+  - Add timezone detection and validation with comprehensive timezone database and aliases
+  - Build time parsing system for natural language input ("tomorrow at 8pm", "next friday")
+  - Create timezone conversion helpers for cross-timezone coordination with visual displays
+  - Add timestamp validation and error handling for invalid inputs with helpful suggestions
+  - Implement time zone lookup and information commands
   - _Requirements: 5.1, 5.2, 5.5, 5.6_
 
 - [ ] 12. Implement administrative commands and controls
-  - Create Admin cog with server configuration management
-  - Build role mapping interface for permission configuration
-  - Implement backup and restore functionality with automated scheduling
-  - Add server statistics and analytics commands for administrators
-  - Create maintenance mode functionality for system updates
-  - Build audit logging system for tracking administrative actions
+  - Create Admin cog with server configuration management (/admin config, /admin roles, /admin stats)
+  - Build role mapping interface for permission configuration with interactive setup
+  - Implement backup and restore functionality with automated scheduling and cloud storage
+  - Add server statistics and analytics commands for administrators with exportable reports
+  - Create maintenance mode functionality for system updates with user notifications
+  - Build comprehensive audit logging system for tracking administrative actions
+  - Add server health monitoring and diagnostic commands
+  - Implement bulk operations for event and user management
   - _Requirements: 6.1, 6.3, 6.5, 8.5, 8.6, 9.6_
 
 - [ ] 13. Build web dashboard foundation

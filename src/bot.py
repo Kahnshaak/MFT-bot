@@ -76,9 +76,9 @@ class GameNightBot(commands.Bot):
             self.event_bus.add_middleware(self._metrics_middleware)
             self.event_bus.add_middleware(self._audit_middleware)
             
-            # Load cogs (will be implemented in later tasks)
-            # await self.load_extension('cogs.events')
-            # await self.load_extension('cogs.users')
+            # Load cogs
+            await self.load_extension('cogs.events')
+            # await self.load_extension('cogs.users')  # Will be implemented in later tasks
             # etc.
             
             self.logger.info("Bot setup completed successfully")

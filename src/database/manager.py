@@ -102,6 +102,55 @@ class DatabaseManager(LoggerMixin):
         """Check if database is connected."""
         return self._connected and self.client is not None
     
+    @property
+    def events(self):
+        """Events collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.events
+    
+    @property
+    def users(self):
+        """Users collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.users
+    
+    @property
+    def notifications(self):
+        """Notifications collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.notifications
+    
+    @property
+    def recurring_schedules(self):
+        """Recurring schedules collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.recurring_schedules
+    
+    @property
+    def game_interests(self):
+        """Game interests collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.game_interests
+    
+    @property
+    def guild_configs(self):
+        """Guild configurations collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.guild_configs
+    
+    @property
+    def audit_logs(self):
+        """Audit logs collection."""
+        if not self.database:
+            raise DatabaseConnectionError("Database not connected")
+        return self.database.audit_logs
+    
     @retry_on_failure(max_attempts=3, delay=1.0)
     async def ping(self) -> bool:
         """
