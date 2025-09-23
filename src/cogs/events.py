@@ -20,6 +20,12 @@ from core.event_bus import EventBus, EventType
 from core.permission_decorators import require_permission
 from core.security_manager import Permission
 from core.validation_manager import ValidationManager
+from core.poll_manager import PollManager
+from core.poll_notifications import PollNotificationScheduler
+from views.enhanced_poll_views import (
+    EnhancedDatePollView, EnhancedTimePollView, TieResolutionView,
+    PersistentPollView
+)
 from utils.exceptions import ValidationError, PermissionDeniedError, ErrorCode
 from utils.logging_config import get_logger, LoggerMixin
 
@@ -367,16 +373,16 @@ class StartDatePollButton(discord.ui.Button):
             return
         
         try:
-            # Start date polling
-            await view.cog.start_date_poll(view.event)
+            # Start enhanced date polling
+            await view.cog.start_enhanced_date_poll(view.event)
             
             # Get updated event and poll
             updated_event = await view.cog.get_event(view.event.id)
             date_poll = updated_event.get_poll(PollType.DATE)
             
             # Create poll embed and view
-            embed = view.cog.create_poll_embed(date_poll, updated_event)
-            poll_view = DatePollView(view.cog, updated_event, date_poll)
+            embed = view.cog.create_enhanced_poll_embed(date_poll, updated_event)
+            poll_view = EnhancedDatePollView(view.cog, updated_event, date_poll)
             
             await interaction.response.edit_message(
                 content=f"📅 **Date Poll Started for {updated_event.title}**\n"
@@ -423,8 +429,8 @@ class CloseDatePollButton(discord.ui.Button):
             time_poll = updated_event.get_poll(PollType.TIME)
             
             # Create time poll embed and view
-            embed = view.cog.create_poll_embed(time_poll, updated_event)
-            poll_view = TimePollView(view.cog, updated_event, time_poll)
+            embed = view.cog.create_enhanced_poll_embed(time_poll, updated_event)
+            poll_view = EnhancedTimePollView(view.cog, updated_event, time_poll)
             
             await interaction.response.edit_message(
                 content=f"⏰ **Time Poll Started for {updated_event.title}**\n"
@@ -697,12 +703,117 @@ class EventsCog(commands.Cog, LoggerMixin):
         self.validation: ValidationManager = bot.validation
         self.event_bus: EventBus = bot.event_bus
         
+        # Initialize enhanced poll management
+        self.poll_manager = PollManager(self.event_bus, bot.database)
+        self.poll_notifications = PollNotificationScheduler(self.event_bus, bot.database, bot)
+        
         # Subscribe to relevant events
         self.event_bus.subscribe(EventType.SYSTEM_STARTUP, self._on_startup)
+        self.event_bus.subscribe(EventType.POLL_COMPLETED, self._on_poll_completed)
+        self.event_bus.subscribe(EventType.POLL_EXPIRED, self._on_poll_expired)
     
     async def _on_startup(self, event):
         """Handle system startup."""
         self.logger.info("Events cog started")
+        
+        # Reconstruct persistent views for active polls
+        await self._reconstruct_persistent_views()
+    
+    async def _on_poll_completed(self, event_data):
+        """Handle poll completion events."""
+        data = event_data.data
+        
+        # Check if this requires admin intervention for ties
+        if data.get('result') == 'tie_needs_admin_resolution':
+            await self._handle_tie_resolution_needed(data)
+    
+    async def _on_poll_expired(self, event_data):
+        """Handle poll expiration events."""
+        data = event_data.data
+        
+        if data.get('had_tie'):
+            await self._handle_tie_resolution_needed(data)
+    
+    async def _handle_tie_resolution_needed(self, data: Dict[str, Any]):
+        """Handle when a poll tie needs admin resolution."""
+        try:
+            event_id = data['event_id']
+            poll_type = PollType(data['poll_type'])
+            
+            # Get event and poll data
+            event_data = await self.bot.database.events.find_one({'_id': event_id})
+            if not event_data:
+                return
+            
+            event = Event(**event_data)
+            poll = event.get_poll(poll_type)
+            if not poll:
+                return
+            
+            # Get tied options
+            tied_options = []
+            if 'tied_options' in data:
+                for option_data in data['tied_options']:
+                    option = poll.get_option_by_id(option_data['id'])
+                    if option:
+                        tied_options.append(option)
+            
+            if tied_options:
+                # Create tie resolution view and send to admins
+                guild = self.bot.get_guild(int(event.guild_id))
+                if guild:
+                    # Find admin channel or use general
+                    admin_channel = None
+                    for channel in guild.text_channels:
+                        if 'admin' in channel.name.lower() or 'mod' in channel.name.lower():
+                            admin_channel = channel
+                            break
+                    
+                    if not admin_channel:
+                        admin_channel = guild.text_channels[0] if guild.text_channels else None
+                    
+                    if admin_channel:
+                        view = TieResolutionView(self, event, poll, tied_options)
+                        await admin_channel.send(
+                            f"🔧 **Admin Action Required**\n"
+                            f"Poll tie in event **{event.title}** needs resolution.\n"
+                            f"Tied options: {', '.join(opt.label for opt in tied_options)}",
+                            view=view
+                        )
+        
+        except Exception as e:
+            self.logger.error(f"Error handling tie resolution: {e}", exc_info=True)
+    
+    async def _reconstruct_persistent_views(self):
+        """Reconstruct persistent views for active polls after bot restart."""
+        try:
+            # Find all active events with active polls
+            active_events = await self.bot.database.events.find({
+                'state': {'$in': ['DATE_POLLING', 'TIME_POLLING', 'GAME_POLLING']}
+            }).to_list(length=100)
+            
+            for event_data in active_events:
+                event = Event(**event_data)
+                
+                # Check each poll type
+                for poll_type in [PollType.DATE, PollType.TIME, PollType.GAME]:
+                    poll = event.get_poll(poll_type)
+                    if poll and poll.is_active:
+                        # Recreate timeout for this poll
+                        if poll.closes_at:
+                            remaining_seconds = (poll.closes_at - datetime.utcnow()).total_seconds()
+                            if remaining_seconds > 0:
+                                # Reschedule timeout
+                                await self.poll_manager.schedule_poll_notifications(
+                                    event_id=str(event.id),
+                                    poll_type=poll_type,
+                                    timeout_seconds=int(remaining_seconds)
+                                )
+            
+            self.logger.info(f"Reconstructed persistent views for {len(active_events)} active events")
+            
+        except Exception as e:
+            self.logger.error(f"Error reconstructing persistent views: {e}", exc_info=True)
     
     @commands.slash_command(name="event", description="Create a new game night event")
     @require_permission(Permission.CREATE_EVENTS)
@@ -1368,4 +1479,429 @@ class EventsCog(commands.Cog, LoggerMixin):
 
 async def setup(bot):
     """Set up the Events cog."""
-    await bot.add_cog(EventsCog(bot))
+    await bot.add_cog(EventsCog(bot))    
+  
+  # Enhanced poll management methods
+    
+    async def start_enhanced_date_poll(self, event: Event, custom_options: Optional[Dict[str, Any]] = None) -> None:
+        """Start enhanced date polling with timeout management."""
+        if not event.can_transition_to(EventState.DATE_POLLING):
+            raise ValidationError("Cannot start date poll in current state")
+        
+        # Generate date options (next 30 days, excluding weekdays if configured)
+        date_options = self._generate_date_options()
+        
+        # Create poll using poll manager
+        poll = await self.poll_manager.create_poll_with_timeout(
+            event=event,
+            poll_type=PollType.DATE,
+            title="Select Event Date",
+            options=date_options,
+            timeout_minutes=custom_options.get('timeout_minutes') if custom_options else None,
+            custom_options=custom_options
+        )
+        
+        # Transition event state
+        event.transition_to(EventState.DATE_POLLING)
+        
+        # Update in database
+        await self.update_event(event)
+        
+        # Emit event
+        await self.event_bus.emit(
+            EventType.EVENT_STATE_CHANGED,
+            {
+                "event_id": str(event.id),
+                "old_state": EventState.DRAFT.value,
+                "new_state": EventState.DATE_POLLING.value
+            },
+            source="events_cog",
+            guild_id=event.guild_id
+        )
+    
+    async def start_enhanced_time_poll(self, event: Event, selected_date: date, custom_options: Optional[Dict[str, Any]] = None) -> None:
+        """Start enhanced time polling with custom options."""
+        if not event.can_transition_to(EventState.TIME_POLLING):
+            raise ValidationError("Cannot start time poll in current state")
+        
+        # Generate time options
+        time_options = self._generate_time_options(selected_date)
+        
+        # Create poll using poll manager
+        poll = await self.poll_manager.create_poll_with_timeout(
+            event=event,
+            poll_type=PollType.TIME,
+            title="Select Event Time",
+            options=time_options,
+            timeout_minutes=custom_options.get('timeout_minutes') if custom_options else None,
+            is_multiple_choice=True,  # Allow multiple time preferences
+            custom_options=custom_options
+        )
+        
+        # Set selected date
+        event.schedule.selected_date = selected_date
+        
+        # Transition event state
+        event.transition_to(EventState.TIME_POLLING)
+        
+        # Update in database
+        await self.update_event(event)
+        
+        # Emit event
+        await self.event_bus.emit(
+            EventType.EVENT_STATE_CHANGED,
+            {
+                "event_id": str(event.id),
+                "old_state": EventState.DATE_POLLING.value,
+                "new_state": EventState.TIME_POLLING.value,
+                "selected_date": selected_date.isoformat()
+            },
+            source="events_cog",
+            guild_id=event.guild_id
+        )
+    
+    async def start_enhanced_game_poll(self, event: Event, selected_time: time, custom_options: Optional[Dict[str, Any]] = None) -> None:
+        """Start enhanced game polling with custom games."""
+        if not event.can_transition_to(EventState.GAME_POLLING):
+            raise ValidationError("Cannot start game poll in current state")
+        
+        # Generate game options (popular games + custom options)
+        game_options = await self._generate_game_options(event.guild_id, custom_options)
+        
+        # Create poll using poll manager
+        poll = await self.poll_manager.create_poll_with_timeout(
+            event=event,
+            poll_type=PollType.GAME,
+            title="Select Games to Play",
+            options=game_options,
+            timeout_minutes=custom_options.get('timeout_minutes') if custom_options else None,
+            is_multiple_choice=True,  # Allow multiple game selections
+            custom_options=custom_options
+        )
+        
+        # Set selected time
+        event.schedule.selected_time = selected_time
+        
+        # Transition event state
+        event.transition_to(EventState.GAME_POLLING)
+        
+        # Update in database
+        await self.update_event(event)
+        
+        # Emit event
+        await self.event_bus.emit(
+            EventType.EVENT_STATE_CHANGED,
+            {
+                "event_id": str(event.id),
+                "old_state": EventState.TIME_POLLING.value,
+                "new_state": EventState.GAME_POLLING.value,
+                "selected_time": selected_time.isoformat()
+            },
+            source="events_cog",
+            guild_id=event.guild_id
+        )
+    
+    def _generate_date_options(self) -> List[Dict[str, Any]]:
+        """Generate date options for the next 30 days."""
+        from datetime import date, timedelta
+        
+        options = []
+        today = date.today()
+        
+        for i in range(1, 31):  # Next 30 days
+            option_date = today + timedelta(days=i)
+            
+            # Skip Mondays and Tuesdays (common work days) unless it's a holiday
+            if option_date.weekday() in [0, 1]:  # Monday = 0, Tuesday = 1
+                continue
+            
+            label = option_date.strftime("%A, %B %d")
+            options.append({
+                'label': label,
+                'value': option_date
+            })
+        
+        return options[:20]  # Limit to 20 options for UI constraints
+    
+    def _generate_time_options(self, selected_date: date) -> List[Dict[str, Any]]:
+        """Generate time options for the selected date."""
+        from datetime import time
+        
+        options = []
+        
+        # Common gaming times (evening focus)
+        common_times = [
+            (17, 0),   # 5:00 PM
+            (17, 30),  # 5:30 PM
+            (18, 0),   # 6:00 PM
+            (18, 30),  # 6:30 PM
+            (19, 0),   # 7:00 PM
+            (19, 30),  # 7:30 PM
+            (20, 0),   # 8:00 PM
+            (20, 30),  # 8:30 PM
+            (21, 0),   # 9:00 PM
+            (21, 30),  # 9:30 PM
+        ]
+        
+        # Weekend times (include afternoon)
+        if selected_date.weekday() >= 5:  # Saturday = 5, Sunday = 6
+            weekend_times = [
+                (14, 0),   # 2:00 PM
+                (14, 30),  # 2:30 PM
+                (15, 0),   # 3:00 PM
+                (15, 30),  # 3:30 PM
+                (16, 0),   # 4:00 PM
+                (16, 30),  # 4:30 PM
+            ]
+            common_times = weekend_times + common_times
+        
+        for hour, minute in common_times:
+            time_obj = time(hour, minute)
+            label = time_obj.strftime("%I:%M %p").lstrip('0')
+            options.append({
+                'label': label,
+                'value': time_obj
+            })
+        
+        return options
+    
+    async def _generate_game_options(self, guild_id: str, custom_options: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Generate game options based on guild preferences and popular games."""
+        options = []
+        
+        # Default popular games
+        popular_games = [
+            "Among Us",
+            "Jackbox Games",
+            "Fall Guys",
+            "Rocket League",
+            "Minecraft",
+            "Valorant",
+            "League of Legends",
+            "Overwatch 2",
+            "Apex Legends",
+            "Gartic Phone"
+        ]
+        
+        # Add popular games
+        for game in popular_games:
+            options.append({
+                'label': game,
+                'value': game
+            })
+        
+        # Add custom games if provided
+        if custom_options and 'additional_games' in custom_options:
+            for game in custom_options['additional_games']:
+                options.append({
+                    'label': game,
+                    'value': game
+                })
+        
+        # TODO: In a full implementation, this would query the database for:
+        # - Guild-specific popular games
+        # - User game interests
+        # - Recently played games
+        
+        return options[:25]  # Discord dropdown limit
+    
+    def create_enhanced_poll_embed(self, poll: Poll, event: Event) -> discord.Embed:
+        """Create enhanced embed for poll display with analytics."""
+        poll_type_info = {
+            PollType.DATE: {"emoji": "📅", "color": discord.Color.blue()},
+            PollType.TIME: {"emoji": "⏰", "color": discord.Color.green()},
+            PollType.GAME: {"emoji": "🎮", "color": discord.Color.purple()}
+        }
+        
+        info = poll_type_info.get(poll.poll_type, {"emoji": "📊", "color": discord.Color.grey()})
+        
+        embed = discord.Embed(
+            title=f"{info['emoji']} {poll.title}",
+            description=poll.description or f"Vote for your preferred {poll.poll_type.value.lower()}!",
+            color=info["color"],
+            timestamp=datetime.utcnow()
+        )
+        
+        # Add event info
+        embed.add_field(
+            name="Event",
+            value=event.title,
+            inline=True
+        )
+        
+        # Add poll status
+        status = "🟢 Active" if poll.is_active else "🔴 Closed"
+        embed.add_field(
+            name="Status",
+            value=status,
+            inline=True
+        )
+        
+        # Add closing time if available
+        if poll.closes_at:
+            embed.add_field(
+                name="Closes",
+                value=f"<t:{int(poll.closes_at.timestamp())}:R>",
+                inline=True
+            )
+        
+        # Add options with vote counts
+        if poll.options:
+            total_votes = sum(opt.vote_count for opt in poll.options)
+            
+            options_text = []
+            for i, option in enumerate(poll.options[:10]):  # Limit display
+                percentage = (option.vote_count / total_votes * 100) if total_votes > 0 else 0
+                bar_length = int(percentage / 10)  # 10% per bar segment
+                bar = "█" * bar_length + "░" * (10 - bar_length)
+                
+                options_text.append(
+                    f"**{option.label}**\n"
+                    f"{bar} {option.vote_count} votes ({percentage:.1f}%)"
+                )
+            
+            embed.add_field(
+                name=f"Options ({len(poll.options)} total)",
+                value="\n\n".join(options_text) if options_text else "No options available",
+                inline=False
+            )
+            
+            # Add participation info
+            unique_voters = len(set(user_id for opt in poll.options for user_id in opt.votes))
+            embed.add_field(
+                name="Participation",
+                value=f"{unique_voters} voters, {total_votes} total votes",
+                inline=True
+            )
+        
+        # Add footer with poll type
+        embed.set_footer(text=f"{poll.poll_type.value.title()} Poll • Event ID: {event.id}")
+        
+        return embed
+    
+    async def get_poll_analytics_summary(self, event_id: str, poll_type: PollType) -> Optional[Dict[str, Any]]:
+        """Get analytics summary for a poll."""
+        return self.poll_manager.get_poll_analytics(event_id, poll_type)
+    
+    @commands.slash_command(name="poll-extend", description="Extend an active poll")
+    @require_permission(Permission.MANAGE_EVENTS)
+    async def extend_poll_command(
+        self, 
+        interaction: discord.Interaction, 
+        event_id: str, 
+        poll_type: str,
+        minutes: int = 15
+    ):
+        """Extend an active poll by specified minutes."""
+        try:
+            # Validate poll type
+            try:
+                poll_type_enum = PollType(poll_type.upper())
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Invalid poll type. Use: DATE, TIME, or GAME",
+                    ephemeral=True
+                )
+                return
+            
+            # Get event
+            event = await self.get_event_by_id(event_id)
+            if not event:
+                await interaction.response.send_message(
+                    "❌ Event not found.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check permissions
+            if not await self.can_manage_event(interaction.user, event):
+                await interaction.response.send_message(
+                    "❌ You don't have permission to manage this event.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get poll
+            poll = event.get_poll(poll_type_enum)
+            if not poll or not poll.is_active:
+                await interaction.response.send_message(
+                    f"❌ No active {poll_type_enum.value.lower()} poll found.",
+                    ephemeral=True
+                )
+                return
+            
+            # Extend poll
+            await self.poll_manager._extend_poll_voting(event, poll)
+            
+            await interaction.response.send_message(
+                f"⏰ {poll_type_enum.value.title()} poll extended by {minutes} minutes!",
+                ephemeral=True
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error extending poll: {e}", exc_info=True)
+            await interaction.response.send_message(
+                "❌ An error occurred while extending the poll.",
+                ephemeral=True
+            )
+    
+    @commands.slash_command(name="poll-analytics", description="View poll analytics")
+    @require_permission(Permission.VIEW_ANALYTICS)
+    async def poll_analytics_command(
+        self, 
+        interaction: discord.Interaction, 
+        event_id: str, 
+        poll_type: str
+    ):
+        """View analytics for a poll."""
+        try:
+            # Validate poll type
+            try:
+                poll_type_enum = PollType(poll_type.upper())
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Invalid poll type. Use: DATE, TIME, or GAME",
+                    ephemeral=True
+                )
+                return
+            
+            # Get analytics
+            analytics = await self.get_poll_analytics_summary(event_id, poll_type_enum)
+            if not analytics:
+                await interaction.response.send_message(
+                    "❌ No analytics data found for this poll.",
+                    ephemeral=True
+                )
+                return
+            
+            # Create analytics embed
+            embed = discord.Embed(
+                title=f"📊 {poll_type_enum.value.title()} Poll Analytics",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
+            
+            embed.add_field(
+                name="Participation",
+                value=f"**{analytics['unique_voters']}** unique voters\n"
+                      f"**{analytics['total_votes']}** total votes\n"
+                      f"**{analytics['vote_changes']}** vote changes",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="Timing",
+                value=f"**{analytics['average_time_to_vote_seconds']:.1f}s** avg. time to vote",
+                inline=True
+            )
+            
+            embed.set_footer(text=f"Event ID: {event_id}")
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            self.logger.error(f"Error getting poll analytics: {e}", exc_info=True)
+            await interaction.response.send_message(
+                "❌ An error occurred while retrieving analytics.",
+                ephemeral=True
+            )

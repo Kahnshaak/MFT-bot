@@ -28,6 +28,7 @@ class EventType(Enum):
     POLL_VOTE_CAST = "poll_vote_cast"
     POLL_COMPLETED = "poll_completed"
     POLL_EXPIRED = "poll_expired"
+    POLL_UPDATED = "poll_updated"
     
     # User events
     USER_JOINED_GUILD = "user_joined_guild"

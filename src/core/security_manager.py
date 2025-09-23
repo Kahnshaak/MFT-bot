@@ -33,6 +33,7 @@ class Permission(Enum):
     
     # Advanced permissions
     MANAGE_ALL_EVENTS = "manage_all_events"
+    MANAGE_EVENTS = "manage_events"
     MANAGE_RECURRING = "manage_recurring"
     MANAGE_USERS = "manage_users"
     
