@@ -40,9 +40,22 @@ class EventType(Enum):
     # User events
     USER_JOINED_GUILD = "user_joined_guild"
     USER_LEFT_GUILD = "user_left_guild"
+    USER_ONBOARDED = "user_onboarded"
     USER_PREFERENCES_UPDATED = "user_preferences_updated"
+    USER_TIMEZONE_UPDATED = "user_timezone_updated"
+    USER_AVAILABILITY_UPDATED = "user_availability_updated"
     USER_GAME_INTEREST_ADDED = "user_game_interest_added"
     USER_GAME_INTEREST_REMOVED = "user_game_interest_removed"
+    USER_DATA_EXPORTED = "user_data_exported"
+    
+    # RSVP events
+    EVENT_RSVP_UPDATED = "event_rsvp_updated"
+    
+    # Game events
+    GAME_CREATED = "game_created"
+    GAME_UPDATED = "game_updated"
+    GAME_PING_SENT = "game_ping_sent"
+    GAME_INTEREST_UPDATED = "game_interest_updated"
     
     # Notification events
     NOTIFICATION_SCHEDULED = "notification_scheduled"

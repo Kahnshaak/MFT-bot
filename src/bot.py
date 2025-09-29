@@ -81,7 +81,8 @@ class GameNightBot(commands.Bot):
             
             # Load cogs
             await self.load_extension('cogs.events')
-            # await self.load_extension('cogs.users')  # Will be implemented in later tasks
+            await self.load_extension('cogs.users')
+            await self.load_extension('cogs.games')
             # etc.
             
             self.logger.info("Bot setup completed successfully")

@@ -21,6 +21,7 @@ from .event import Event, EventState, PollType, RSVPStatus
 from .user import User, GameInterest, NotificationChannel as UserNotificationChannel
 from .recurring import RecurringSchedule, ScheduleStatus, ExecutionStatus
 from .guild import GuildConfig, PermissionLevel, NotificationChannelType
+from .game import Game, GameCategory, NotificationFrequencyLimit
 
 T = TypeVar('T', bound=BaseDocument)
 
@@ -755,6 +756,222 @@ class GuildConfigRepository(BaseRepository[GuildConfig]):
             raise DatabaseError(f"Failed to update guild statistics: {str(e)}")
 
 
+class GameRepository(BaseRepository[Game]):
+    """Repository for Game documents."""
+    
+    def _get_collection_name(self) -> str:
+        return "games"
+    
+    async def get_by_guild(self, guild_id: str, active_only: bool = True) -> List[Game]:
+        """Get games for a guild."""
+        filter_dict = {"guild_id": guild_id}
+        if active_only:
+            filter_dict["is_active"] = True
+        
+        return await self.find(
+            filter_dict,
+            sort=[("statistics.popularity_score", -1), ("name", 1)]
+        )
+    
+    async def get_by_name(self, guild_id: str, name: str) -> Optional[Game]:
+        """Get game by exact name match."""
+        results = await self.find({
+            "guild_id": guild_id,
+            "name": {"$regex": f"^{name}$", "$options": "i"}
+        })
+        return results[0] if results else None
+    
+    async def search_games(
+        self,
+        guild_id: str,
+        search_term: str,
+        limit: int = 10
+    ) -> List[tuple[Game, float]]:
+        """
+        Search games with fuzzy matching and return with confidence scores.
+        
+        Returns:
+            List of (Game, confidence_score) tuples sorted by confidence
+        """
+        games = await self.get_by_guild(guild_id, active_only=True)
+        matches = []
+        
+        for game in games:
+            # Check exact matches first
+            exact_score = game.matches_name(search_term)
+            if exact_score is not None:
+                matches.append((game, exact_score))
+            else:
+                # Check fuzzy matches
+                fuzzy_score = game.fuzzy_match_score(search_term)
+                if fuzzy_score >= 0.6:  # Minimum threshold for fuzzy matches
+                    matches.append((game, fuzzy_score))
+        
+        # Sort by confidence score (descending)
+        matches.sort(key=lambda x: x[1], reverse=True)
+        return matches[:limit]
+    
+    async def get_trending_games(
+        self,
+        guild_id: str,
+        limit: int = 10
+    ) -> List[Game]:
+        """Get trending games based on recent activity."""
+        games = await self.get_by_guild(guild_id, active_only=True)
+        trending_games = [game for game in games if game.is_trending()]
+        
+        # Sort by popularity score
+        trending_games.sort(key=lambda x: x.statistics.popularity_score, reverse=True)
+        return trending_games[:limit]
+    
+    async def get_popular_games(
+        self,
+        guild_id: str,
+        limit: int = 10
+    ) -> List[Game]:
+        """Get most popular games by total statistics."""
+        return await self.find(
+            {"guild_id": guild_id, "is_active": True},
+            limit=limit,
+            sort=[("statistics.popularity_score", -1)]
+        )
+    
+    async def get_by_category(
+        self,
+        guild_id: str,
+        category: GameCategory,
+        limit: Optional[int] = None
+    ) -> List[Game]:
+        """Get games by category."""
+        return await self.find(
+            {
+                "guild_id": guild_id,
+                "is_active": True,
+                "categories": category.value
+            },
+            limit=limit,
+            sort=[("statistics.popularity_score", -1)]
+        )
+    
+    async def get_by_tag(
+        self,
+        guild_id: str,
+        tag: str,
+        limit: Optional[int] = None
+    ) -> List[Game]:
+        """Get games by tag."""
+        return await self.find(
+            {
+                "guild_id": guild_id,
+                "is_active": True,
+                "tags": {"$regex": f"^{tag}$", "$options": "i"}
+            },
+            limit=limit,
+            sort=[("statistics.popularity_score", -1)]
+        )
+    
+    async def update_statistics(
+        self,
+        game_id: str,
+        stat_updates: Dict[str, Any]
+    ) -> bool:
+        """Update game statistics."""
+        try:
+            update_dict = {}
+            for key, value in stat_updates.items():
+                update_dict[f"statistics.{key}"] = value
+            
+            update_dict["updated_at"] = datetime.utcnow()
+            
+            result = await self.db.update_one(
+                self.collection_name,
+                {"_id": ObjectId(game_id)},
+                {"$set": update_dict}
+            )
+            return result
+        except Exception as e:
+            self.logger.error(
+                "Failed to update game statistics",
+                game_id=game_id,
+                error=str(e)
+            )
+            raise DatabaseError(f"Failed to update game statistics: {str(e)}")
+
+
+class NotificationFrequencyRepository(BaseRepository[NotificationFrequencyLimit]):
+    """Repository for NotificationFrequencyLimit documents."""
+    
+    def _get_collection_name(self) -> str:
+        return "notification_frequency_limits"
+    
+    async def get_by_user_and_game(
+        self,
+        user_id: str,
+        game_name: str
+    ) -> Optional[NotificationFrequencyLimit]:
+        """Get frequency limit for user and game."""
+        results = await self.find({
+            "user_id": user_id,
+            "game_name": {"$regex": f"^{game_name}$", "$options": "i"}
+        })
+        return results[0] if results else None
+    
+    async def get_by_user(self, user_id: str) -> List[NotificationFrequencyLimit]:
+        """Get all frequency limits for a user."""
+        return await self.find({"user_id": user_id})
+    
+    async def create_or_update_limit(
+        self,
+        user_id: str,
+        game_name: str,
+        max_pings_per_day: int = 3,
+        max_pings_per_week: int = 10
+    ) -> str:
+        """Create or update frequency limit for user and game."""
+        existing = await self.get_by_user_and_game(user_id, game_name)
+        
+        if existing:
+            existing.max_pings_per_day = max_pings_per_day
+            existing.max_pings_per_week = max_pings_per_week
+            await self.update(str(existing.id), existing)
+            return str(existing.id)
+        else:
+            limit = NotificationFrequencyLimit(
+                user_id=user_id,
+                game_name=game_name,
+                max_pings_per_day=max_pings_per_day,
+                max_pings_per_week=max_pings_per_week
+            )
+            return await self.create(limit)
+    
+    async def can_send_ping(self, user_id: str, game_name: str) -> bool:
+        """Check if a ping can be sent to user for game."""
+        limit = await self.get_by_user_and_game(user_id, game_name)
+        if not limit:
+            # No limit set, use default
+            limit = NotificationFrequencyLimit(
+                user_id=user_id,
+                game_name=game_name
+            )
+        
+        return limit.can_send_ping()
+    
+    async def record_ping_sent(self, user_id: str, game_name: str) -> bool:
+        """Record that a ping was sent."""
+        limit = await self.get_by_user_and_game(user_id, game_name)
+        if not limit:
+            # Create default limit
+            limit = NotificationFrequencyLimit(
+                user_id=user_id,
+                game_name=game_name
+            )
+            limit_id = await self.create(limit)
+            limit = await self.get_by_id(limit_id)
+        
+        limit.record_ping_sent()
+        return await self.update(str(limit.id), limit)
+
+
 class RepositoryManager:
     """
     Manager class for all repositories.
@@ -770,6 +987,8 @@ class RepositoryManager:
         self.users = UserRepository(db_manager, User)
         self.recurring_schedules = RecurringScheduleRepository(db_manager, RecurringSchedule)
         self.guild_configs = GuildConfigRepository(db_manager, GuildConfig)
+        self.games = GameRepository(db_manager, Game)
+        self.notification_frequency = NotificationFrequencyRepository(db_manager, NotificationFrequencyLimit)
     
     async def ensure_guild_config(self, guild_id: str, guild_name: str = None) -> GuildConfig:
         """
