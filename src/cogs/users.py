@@ -440,7 +440,10 @@ class UsersCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error in onboarding flow: {e}", exc_info=True)
     
-    @commands.slash_command(name="profile", description="View and manage your profile")
+    @commands.slash_command(
+        name="profile", 
+        description="View and manage your user profile and preferences"
+    )
     async def profile_command(self, interaction: discord.Interaction):
         """Display user profile with management options."""
         try:
@@ -470,7 +473,10 @@ class UsersCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    @commands.slash_command(name="stats", description="View your game night statistics")
+    @commands.slash_command(
+        name="stats", 
+        description="View your game night participation statistics"
+    )
     async def stats_command(self, interaction: discord.Interaction):
         """Display user statistics."""
         try:
@@ -501,7 +507,11 @@ class UsersCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    @commands.slash_command(name="timezone", description="Set your timezone")
+    @commands.slash_command(
+        name="timezone", 
+        description="Set your timezone for accurate event times"
+    )
+    @app_commands.describe(timezone="Your timezone (e.g., America/New_York, Europe/London)")
     async def set_timezone_command(self, interaction: discord.Interaction, timezone: str):
         """Set user timezone."""
         try:
@@ -536,7 +546,10 @@ class UsersCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    @commands.slash_command(name="availability", description="Manage your weekly availability")
+    @commands.slash_command(
+        name="availability", 
+        description="Manage your weekly availability schedule"
+    )
     async def availability_command(self, interaction: discord.Interaction):
         """Manage user availability."""
         try:
@@ -565,7 +578,10 @@ class UsersCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    @commands.slash_command(name="notifications", description="Configure notification preferences")
+    @commands.slash_command(
+        name="notifications", 
+        description="Configure when and how you receive notifications"
+    )
     async def notifications_command(self, interaction: discord.Interaction):
         """Configure notification preferences."""
         try:
@@ -585,159 +601,7 @@ class UsersCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    @commands.slash_command(name="games-add", description="Add a game to your interests")
-    async def add_game_command(
-        self, 
-        interaction: discord.Interaction, 
-        game_name: str,
-        interest_level: int = 5
-    ):
-        """Add game interest."""
-        try:
-            if not (1 <= interest_level <= 10):
-                await interaction.response.send_message(
-                    "❌ Interest level must be between 1 and 10.",
-                    ephemeral=True
-                )
-                return
-            
-            # Validate and sanitize game name
-            game_name = ValidationMixin.sanitize_text(game_name, 100)
-            if not game_name:
-                await interaction.response.send_message(
-                    "❌ Invalid game name.",
-                    ephemeral=True
-                )
-                return
-            
-            # Get or create user
-            user = await self.repositories.ensure_user_profile(
-                str(interaction.user.id),
-                str(interaction.guild.id),
-                interaction.user.display_name
-            )
-            
-            # Add game interest
-            success = user.add_game_interest(game_name, interest_level)
-            
-            if success:
-                # Update in database
-                await self.repositories.users.update(str(user.id), user)
-                
-                await interaction.response.send_message(
-                    f"✅ Added **{game_name}** to your interests (level {interest_level}/10)",
-                    ephemeral=True
-                )
-                
-                # Emit event
-                await self.event_bus.emit(
-                    EventType.USER_GAME_INTEREST_ADDED,
-                    {
-                        "user_id": str(interaction.user.id),
-                        "guild_id": str(interaction.guild.id),
-                        "game_name": game_name,
-                        "interest_level": interest_level
-                    },
-                    source="users_cog",
-                    guild_id=str(interaction.guild.id),
-                    user_id=str(interaction.user.id)
-                )
-            else:
-                await interaction.response.send_message(
-                    f"❌ You're already interested in **{game_name}**. Use `/games list` to see your interests.",
-                    ephemeral=True
-                )
-            
-        except Exception as e:
-            self.logger.error(f"Error adding game interest: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ An error occurred while adding the game.",
-                ephemeral=True
-            )
-    
-    @commands.slash_command(name="games-remove", description="Remove a game from your interests")
-    async def remove_game_command(self, interaction: discord.Interaction, game_name: str):
-        """Remove game interest."""
-        try:
-            user = await self.repositories.users.get_by_user_and_guild(
-                str(interaction.user.id),
-                str(interaction.guild.id)
-            )
-            
-            if not user:
-                await interaction.response.send_message(
-                    "❌ No profile found. Use `/profile` to create one.",
-                    ephemeral=True
-                )
-                return
-            
-            # Remove game interest
-            success = user.remove_game_interest(game_name)
-            
-            if success:
-                # Update in database
-                await self.repositories.users.update(str(user.id), user)
-                
-                await interaction.response.send_message(
-                    f"✅ Removed **{game_name}** from your interests",
-                    ephemeral=True
-                )
-                
-                # Emit event
-                await self.event_bus.emit(
-                    EventType.USER_GAME_INTEREST_REMOVED,
-                    {
-                        "user_id": str(interaction.user.id),
-                        "guild_id": str(interaction.guild.id),
-                        "game_name": game_name
-                    },
-                    source="users_cog",
-                    guild_id=str(interaction.guild.id),
-                    user_id=str(interaction.user.id)
-                )
-            else:
-                await interaction.response.send_message(
-                    f"❌ **{game_name}** not found in your interests.",
-                    ephemeral=True
-                )
-            
-        except Exception as e:
-            self.logger.error(f"Error removing game interest: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ An error occurred while removing the game.",
-                ephemeral=True
-            )
-    
-    @commands.slash_command(name="games-list", description="List your game interests")
-    async def list_games_command(self, interaction: discord.Interaction):
-        """List user's game interests."""
-        try:
-            user = await self.repositories.users.get_by_user_and_guild(
-                str(interaction.user.id),
-                str(interaction.guild.id)
-            )
-            
-            if not user or not user.game_interests:
-                await interaction.response.send_message(
-                    "❌ No game interests found. Use `/games add <game>` to add some!",
-                    ephemeral=True
-                )
-                return
-            
-            # Create games embed
-            embed = self.create_games_embed(user, interaction.user)
-            
-            await interaction.response.send_message(
-                embed=embed,
-                ephemeral=True
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error listing games: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ An error occurred while loading your games.",
-                ephemeral=True
-            )
+
     
     async def export_user_data(self, interaction: discord.Interaction):
         """Export user data for GDPR compliance."""

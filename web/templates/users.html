@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Game Night Bot{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-people"></i>
+        Users Management
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshUsers()">
+                <i class="bi bi-arrow-clockwise"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Users Overview -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="bi bi-people-fill text-primary"></i>
+                    Total Users
+                </h5>
+                <h2 class="text-primary" id="total-users-count">-</h2>
+                <p class="card-text">Registered users across all servers</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="bi bi-clock text-info"></i>
+                    Active Today
+                </h5>
+                <h2 class="text-info" id="active-today-count">-</h2>
+                <p class="card-text">Users active in the last 24 hours</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="bi bi-controller text-success"></i>
+                    Game Interests
+                </h5>
+                <h2 class="text-success" id="game-interests-count">-</h2>
+                <p class="card-text">Total game interests registered</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Users Information -->
+<div class="card shadow">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="bi bi-info-circle"></i>
+            User Management Information
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-lg-8">
+                <h5>User Data Overview</h5>
+                <p class="text-muted">
+                    The Game Night Bot manages user profiles, preferences, and game interests across Discord servers. 
+                    User data includes:
+                </p>
+                <ul>
+                    <li><strong>Profile Information:</strong> Display names, timezones, and notification preferences</li>
+                    <li><strong>Game Interests:</strong> Games users want to be notified about with interest levels</li>
+                    <li><strong>Availability:</strong> Weekly availability schedules for event planning</li>
+                    <li><strong>Statistics:</strong> Event attendance, RSVP history, and participation metrics</li>
+                </ul>
+                
+                <h5 class="mt-4">Privacy & Data Protection</h5>
+                <p class="text-muted">
+                    All user data is stored securely and users can:
+                </p>
+                <ul>
+                    <li>Export their data using the <code>/profile</code> command</li>
+                    <li>Update their preferences at any time</li>
+                    <li>Request data deletion through Discord server administrators</li>
+                </ul>
+            </div>
+            <div class="col-lg-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-gear"></i>
+                            User Commands
+                        </h6>
+                        <div class="small">
+                            <p><code>/profile</code> - View and manage profile</p>
+                            <p><code>/timezone</code> - Set timezone</p>
+                            <p><code>/availability</code> - Manage availability</p>
+                            <p><code>/notifications</code> - Configure notifications</p>
+                            <p><code>/games-add</code> - Add game interests</p>
+                            <p><code>/games-list</code> - View game interests</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Placeholder for Future Features -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-tools"></i>
+                    Coming Soon
+                </h6>
+            </div>
+            <div class="card-body text-center">
+                <i class="bi bi-wrench-adjustable" style="font-size: 3rem; color: #6c757d;"></i>
+                <h5 class="mt-3">Advanced User Management</h5>
+                <p class="text-muted">
+                    Future versions will include detailed user analytics, bulk operations, 
+                    and advanced filtering capabilities.
+                </p>
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <i class="bi bi-graph-up text-primary"></i>
+                            <h6 class="mt-2">User Analytics</h6>
+                            <small class="text-muted">Detailed participation statistics and trends</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <i class="bi bi-search text-info"></i>
+                            <h6 class="mt-2">Advanced Search</h6>
+                            <small class="text-muted">Filter users by activity, interests, and more</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <i class="bi bi-download text-success"></i>
+                            <h6 class="mt-2">Bulk Export</h6>
+                            <small class="text-muted">Export user data for analysis and reporting</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadUserStats() {
+    try {
+        const response = await fetch('/api/stats');
+        const result = await response.json();
+        
+        if (result.success) {
+            const stats = result.data;
+            
+            // Update user counts
+            document.getElementById('total-users-count').textContent = stats.total_users || 0;
+            
+            // Placeholder values for features not yet implemented
+            document.getElementById('active-today-count').textContent = '-';
+            document.getElementById('game-interests-count').textContent = '-';
+        }
+    } catch (error) {
+        console.error('Error loading user stats:', error);
+        document.getElementById('total-users-count').textContent = 'Error';
+        document.getElementById('active-today-count').textContent = 'Error';
+        document.getElementById('game-interests-count').textContent = 'Error';
+    }
+}
+
+function refreshUsers() {
+    loadUserStats();
+    showToast('User data refreshed!', 'success');
+}
+
+function showToast(message, type = 'info') {
+    // Simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close ms-auto" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+
+// Load user stats when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserStats();
+});
+</script>
+{% endblock %}

@@ -21,6 +21,7 @@ from core.security_manager import Permission
 from core.validation_manager import ValidationManager
 from utils.exceptions import ValidationError, PermissionDeniedError, ErrorCode
 from utils.logging_config import get_logger, LoggerMixin
+from utils.ui_validation_fixes import ImprovedEmbedBuilder, ImprovedButtonBuilder
 
 
 class GameSearchModal(discord.ui.Modal):
@@ -87,7 +88,7 @@ class GameSearchModal(discord.ui.Modal):
         except Exception as e:
             self.cog.logger.error(f"Error in game search modal: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while processing your selection.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -199,7 +200,7 @@ class GameAliasModal(discord.ui.Modal):
         except Exception as e:
             self.cog.logger.error(f"Error handling alias modal: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while processing the alias.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -265,7 +266,7 @@ class GameCategoryModal(discord.ui.Modal):
         except Exception as e:
             self.cog.logger.error(f"Error adding category: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while adding the category.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -308,7 +309,7 @@ class GameTagModal(discord.ui.Modal):
         except Exception as e:
             self.cog.logger.error(f"Error adding tag: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while adding the tag.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -355,7 +356,11 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error handling game interest removed: {e}", exc_info=True)
     
-    async def _update_game_statistics(self, guild_id: str, game_name: str, action: str):
+    async def _update_game_statistics(self, guild_id: str, game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return, action: str):
         """Update game statistics based on action."""
         try:
             # Find or create game
@@ -385,7 +390,10 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error updating game statistics: {e}", exc_info=True)
     
-    @app_commands.command(name="games-add", description="Add a game to your interests")
+    @app_commands.command(
+        name="games-add", 
+        description="Add a game to your interest list with rating"
+    )
     @app_commands.describe(
         game_name="Name of the game you're interested in",
         interest_level="Your interest level (1-10, default: 5)"
@@ -393,8 +401,15 @@ class GamesCog(commands.Cog, LoggerMixin):
     async def add_game_command(
         self,
         interaction: discord.Interaction,
-        game_name: str,
+        game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return,
         interest_level: int = 5
+        if not (1 <= interest_level <= 10):
+            await interaction.response.send_message("❌ Interest level must be between 1 and 10.", ephemeral=True)
+            return
     ):
         """Add game interest."""
         try:
@@ -455,13 +470,20 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error adding game interest: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while adding the game.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-remove", description="Remove a game from your interests")
+    @app_commands.command(
+        name="games-remove", 
+        description="Remove a game from your interest list"
+    )
     @app_commands.describe(game_name="Name of the game to remove")
-    async def remove_game_command(self, interaction: discord.Interaction, game_name: str):
+    async def remove_game_command(self, interaction: discord.Interaction, game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return):
         """Remove game interest."""
         try:
             user = await self.repositories.users.get_by_user_and_guild(
@@ -509,11 +531,14 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error removing game interest: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while removing the game.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-list", description="List your game interests")
+    @app_commands.command(
+        name="games-list", 
+        description="View all games you're interested in"
+    )
     async def list_games_command(self, interaction: discord.Interaction):
         """List user's game interests."""
         try:
@@ -540,13 +565,20 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error listing games: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while loading your games.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-ping", description="Ping users interested in a game")
+    @app_commands.command(
+        name="games-ping", 
+        description="Notify users interested in a specific game"
+    )
     @app_commands.describe(game_name="Name of the game to ping for")
-    async def ping_game_command(self, interaction: discord.Interaction, game_name: str):
+    async def ping_game_command(self, interaction: discord.Interaction, game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return):
         """Ping users interested in a game."""
         try:
             # Search for matching games
@@ -580,11 +612,15 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error pinging game: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while pinging for the game.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    async def _handle_game_ping_confirmed(self, interaction: discord.Interaction, game_name: str):
+    async def _handle_game_ping_confirmed(self, interaction: discord.Interaction, game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return):
         """Handle confirmed game ping."""
         try:
             # Get interested users
@@ -646,10 +682,7 @@ class GamesCog(commands.Cog, LoggerMixin):
                 return
             
             # Create embed for the ping
-            embed = discord.Embed(
-                title=f"🎮 Game Night Ping: {game_name}",
-                description=f"{interaction.user.mention} wants to play **{game_name}**!",
-                color=discord.Color.blue(),
+            embed = discord.Embed(title=f"🎮 Game Night Ping: {game_name}", description=f"{interaction.user.mention} wants to play **{game_name}**!", color=discord.Color.blue(, timestamp=datetime.utcnow()),
                 timestamp=datetime.utcnow()
             )
             
@@ -695,11 +728,14 @@ class GamesCog(commands.Cog, LoggerMixin):
             self.logger.error(f"Error handling game ping: {e}", exc_info=True)
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "❌ An error occurred while sending the ping.",
+                    "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                     ephemeral=True
                 )
     
-    @app_commands.command(name="games-popular", description="Show popular games in this server")
+    @app_commands.command(
+        name="games-popular", 
+        description="Show the most popular games in this server"
+    )
     @app_commands.describe(limit="Number of games to show (default: 10)")
     async def popular_games_command(self, interaction: discord.Interaction, limit: int = 10):
         """Show popular games."""
@@ -729,11 +765,14 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error showing popular games: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while loading popular games.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-trending", description="Show trending games in this server")
+    @app_commands.command(
+        name="games-trending", 
+        description="Show games gaining popularity recently"
+    )
     @app_commands.describe(limit="Number of games to show (default: 10)")
     async def trending_games_command(self, interaction: discord.Interaction, limit: int = 10):
         """Show trending games."""
@@ -763,12 +802,15 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error showing trending games: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while loading trending games.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-search", description="Search for games in this server")
-    @app_commands.describe(query="Search term for game names")
+    @app_commands.command(
+        name="games-search", 
+        description="Search for games by name with fuzzy matching"
+    )
+    @app_commands.describe(query="Search term to find games (supports partial matches)")
     async def search_games_command(self, interaction: discord.Interaction, query: str):
         """Search for games."""
         try:
@@ -791,14 +833,22 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error searching games: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while searching for games.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-manage", description="Manage a game's metadata")
+    @app_commands.command(
+        name="games-manage", 
+        description="Manage game metadata and aliases (admin only)"
+    )
+    @app_commands.describe(game_name="Name of the game to manage metadata for")
     @app_commands.describe(game_name="Name of the game to manage")
     @require_permission(Permission.MANAGE_EVENTS)
-    async def manage_game_command(self, interaction: discord.Interaction, game_name: str):
+    async def manage_game_command(self, interaction: discord.Interaction, game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return):
         """Manage game metadata."""
         try:
             game = await self.repositories.games.get_by_name(
@@ -825,11 +875,19 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error managing game: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while loading game management.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @app_commands.command(name="games-limits", description="Configure your notification frequency limits")
+    @app_commands.command(
+        name="games-limits", 
+        description="Configure notification frequency limits per game"
+    )
+    @app_commands.describe(
+        game_name="Game to configure notification limits for",
+        max_per_day="Maximum pings per day (1-10, default: 3)",
+        max_per_week="Maximum pings per week (1-50, default: 15)"
+    )
     @app_commands.describe(
         game_name="Game to configure limits for",
         daily_limit="Maximum pings per day (1-50, default: 3)",
@@ -838,7 +896,11 @@ class GamesCog(commands.Cog, LoggerMixin):
     async def configure_limits_command(
         self,
         interaction: discord.Interaction,
-        game_name: str,
+        game_name: str
+        game_name = game_name.strip()
+        if not game_name or len(game_name) > 100:
+            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+            return,
         daily_limit: int = 3,
         weekly_limit: int = 10
     ):
@@ -883,7 +945,7 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error configuring limits: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while configuring limits.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
@@ -920,7 +982,7 @@ class GamesCog(commands.Cog, LoggerMixin):
             inline=False
         )
         
-        embed.set_footer(text="🔔 = Notifications enabled, 🔕 = Notifications disabled")
+        embed.set_footer(text="Game Night Bot • Interactive Gaming Community")
         return embed
     
     def create_popular_games_embed(self, games: List[Game], guild: discord.Guild) -> discord.Embed:
@@ -951,7 +1013,7 @@ class GamesCog(commands.Cog, LoggerMixin):
             inline=False
         )
         
-        embed.set_footer(text="🔥 = Trending game")
+        embed.set_footer(text="Game Night Bot • Interactive Gaming Community")
         return embed
     
     def create_trending_games_embed(self, games: List[Game], guild: discord.Guild) -> discord.Embed:
@@ -981,7 +1043,7 @@ class GamesCog(commands.Cog, LoggerMixin):
             inline=False
         )
         
-        embed.set_footer(text="Based on activity in the last 30 days")
+        embed.set_footer(text="Game Night Bot • Interactive Gaming Community")
         return embed
     
     def create_search_results_embed(
@@ -1016,7 +1078,7 @@ class GamesCog(commands.Cog, LoggerMixin):
             inline=False
         )
         
-        embed.set_footer(text="Use /games ping <name> to ping interested users")
+        embed.set_footer(text="Game Night Bot • Interactive Gaming Community")
         return embed
     
     def create_game_details_embed(self, game: Game) -> discord.Embed:

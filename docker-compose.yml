@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   mongodb:
-    image: mongo:7.0
+    image: docker.io/library/mongo:7.0
     container_name: gamenight_mongodb
     restart: unless-stopped
     environment:
@@ -26,6 +26,9 @@ services:
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-dummy_client_id}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-dummy_client_secret}
+      - JWT_SECRET=${JWT_SECRET:-dummy_jwt_secret}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
     volumes:
@@ -36,24 +39,7 @@ services:
     networks:
       - gamenight_network
 
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    container_name: gamenight_web
-    restart: unless-stopped
-    environment:
-      - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
-      - JWT_SECRET=${JWT_SECRET}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-    ports:
-      - "8000:8000"
-    depends_on:
-      - mongodb
-    networks:
-      - gamenight_network
+
 
 volumes:
   mongodb_data:

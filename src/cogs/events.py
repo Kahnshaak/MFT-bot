@@ -28,6 +28,7 @@ from views.enhanced_poll_views import (
 )
 from utils.exceptions import ValidationError, PermissionDeniedError, ErrorCode
 from utils.logging_config import get_logger, LoggerMixin
+from utils.ui_validation_fixes import ImprovedEmbedBuilder, ImprovedButtonBuilder
 
 
 class EventCreationModal(discord.ui.Modal):
@@ -86,13 +87,13 @@ class EventCreationModal(discord.ui.Modal):
             
         except ValidationError as e:
             await interaction.response.send_message(
-                f"❌ Invalid input: {e.user_message}",
+                f"❌ The information you provided isn't valid. Please check your input and try again.",
                 ephemeral=True
             )
         except Exception as e:
             self.cog.logger.error(f"Error creating event: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while creating the event. Please try again.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -394,7 +395,7 @@ class StartDatePollButton(discord.ui.Button):
         except Exception as e:
             view.cog.logger.error(f"Error starting date poll: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while starting the date poll.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -442,7 +443,7 @@ class CloseDatePollButton(discord.ui.Button):
         except Exception as e:
             view.cog.logger.error(f"Error closing date poll: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while closing the date poll.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -490,7 +491,7 @@ class CloseTimePollButton(discord.ui.Button):
         except Exception as e:
             view.cog.logger.error(f"Error closing time poll: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while closing the time poll.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -537,7 +538,7 @@ class CloseGamePollButton(discord.ui.Button):
         except Exception as e:
             view.cog.logger.error(f"Error closing game poll: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while closing the game poll.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -609,7 +610,7 @@ class ConfirmCancelView(discord.ui.View):
         except Exception as e:
             self.cog.logger.error(f"Error cancelling event: {e}", exc_info=True)
             await interaction.response.edit_message(
-                content="❌ An error occurred while cancelling the event.",
+                content="❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 view=None
             )
     
@@ -686,7 +687,7 @@ class RSVPModal(discord.ui.Modal):
         except Exception as e:
             self.cog.logger.error(f"Error processing RSVP: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while processing your RSVP.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -815,14 +816,20 @@ class EventsCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error reconstructing persistent views: {e}", exc_info=True)
     
-    @commands.slash_command(name="event", description="Create a new game night event")
+    @commands.slash_command(
+        name="event", 
+        description="Create a new game night event with interactive polls"
+    )
     @require_permission(Permission.CREATE_EVENTS)
     async def create_event_command(self, interaction: discord.Interaction):
-        """Create a new game night event."""
+        """Create a new game night event with interactive scheduling polls."""
         modal = EventCreationModal(self)
         await interaction.response.send_modal(modal)
     
-    @commands.slash_command(name="events", description="List active events in this server")
+    @commands.slash_command(
+        name="events", 
+        description="List all active events in this server"
+    )
     async def list_events_command(self, interaction: discord.Interaction):
         """List active events in the server."""
         try:
@@ -866,11 +873,16 @@ class EventsCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error listing events: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while listing events.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @commands.slash_command(name="event-manage", description="Manage a specific event")
+    @commands.slash_command(
+        name="event-manage", 
+        description="Manage a specific event (admin only)"
+    )
+    @app_commands.describe(event_id="ID of the event to manage (from /events list)")
+    @require_permission(Permission.MANAGE_EVENTS)
     async def manage_event_command(self, interaction: discord.Interaction, event_id: str):
         """Manage a specific event by ID."""
         try:
@@ -912,7 +924,7 @@ class EventsCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error managing event: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while loading the event.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
@@ -1392,10 +1404,7 @@ class EventsCog(commands.Cog, LoggerMixin):
             EventState.CANCELLED: discord.Color.red()
         }
         
-        embed = discord.Embed(
-            title=f"🎮 {event.title}",
-            description=event.description or "No description provided",
-            color=color_map.get(event.state, discord.Color.default()),
+        embed = discord.Embed(title=f"🎮 {event.title}", description=event.description or "No description provided", color=color_map.get(event.state, discord.Color.default(, timestamp=datetime.utcnow())),
             timestamp=datetime.utcnow()
         )
         
@@ -1453,10 +1462,7 @@ class EventsCog(commands.Cog, LoggerMixin):
     
     def create_poll_embed(self, poll: Poll, event: Event) -> discord.Embed:
         """Create Discord embed for poll display."""
-        embed = discord.Embed(
-            title=poll.title,
-            description=poll.description,
-            color=discord.Color.blue(),
+        embed = discord.Embed(title=poll.title, description=poll.description, color=discord.Color.blue(, timestamp=datetime.utcnow()),
             timestamp=datetime.utcnow()
         )
         
@@ -1490,28 +1496,36 @@ class EventsCog(commands.Cog, LoggerMixin):
         
         return embed
     
-    @commands.slash_command(name="calendar", description="Export events to calendar file")
+    @commands.slash_command(
+        name="calendar", 
+        description="Export upcoming events to calendar file (.ics)"
+    )
+    @app_commands.describe(
+        days_ahead="Number of days to include (1-90, default: 30)"
+    )
     async def export_calendar(
         self,
-        ctx: discord.ApplicationContext,
-        days_ahead: int = discord.Option(
-            int,
-            description="Number of days ahead to include (default: 30)",
-            default=30,
-            min_value=1,
-            max_value=365
-        )
+        interaction: discord.Interaction,
+        days_ahead: int = 30
     ):
         """Export scheduled events to an iCalendar (.ics) file."""
         try:
-            await ctx.defer()
+            await interaction.response.defer()
+            
+            # Validate days_ahead parameter
+            if not (1 <= days_ahead <= 90):
+                await interaction.followup.send(
+                    "❌ Days ahead must be between 1 and 90.",
+                    ephemeral=True
+                )
+                return
             
             # Get scheduled events for the guild
             from datetime import datetime, timedelta
             cutoff_date = datetime.utcnow() + timedelta(days=days_ahead)
             
             events_cursor = self.bot.database.events.find({
-                'guild_id': str(ctx.guild.id),
+                'guild_id': str(interaction.guild.id),
                 'state': EventState.SCHEDULED.value,
                 'schedule.selected_date': {
                     '$gte': datetime.utcnow().date().isoformat(),
@@ -1524,7 +1538,7 @@ class EventsCog(commands.Cog, LoggerMixin):
                 events.append(Event(**event_doc))
             
             if not events:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     f"❌ No scheduled events found in the next {days_ahead} days.",
                     ephemeral=True
                 )
@@ -1538,32 +1552,31 @@ class EventsCog(commands.Cog, LoggerMixin):
             calendar_file = io.BytesIO(calendar_content.encode('utf-8'))
             calendar_file.seek(0)
             
-            filename = f"gamenight_events_{ctx.guild.name}_{datetime.utcnow().strftime('%Y%m%d')}.ics"
+            filename = f"gamenight_events_{interaction.guild.name}_{datetime.utcnow().strftime('%Y%m%d')}.ics"
             discord_file = discord.File(calendar_file, filename=filename)
             
-            embed = discord.Embed(
-                title="📅 Calendar Export",
-                description=f"Exported **{len(events)}** scheduled events from the next {days_ahead} days.",
-                color=discord.Color.green()
+            embed = discord.Embed(title="📅 Calendar Export", description=f"Exported **{len(events)}** scheduled events from the next {days_ahead} days.", color=discord.Color.green(, timestamp=datetime.utcnow()),
+                timestamp=datetime.utcnow()
             )
             embed.add_field(
                 name="How to Use",
                 value="Download the .ics file and import it into your calendar app (Google Calendar, Outlook, Apple Calendar, etc.)",
                 inline=False
             )
+            embed.set_footer(text="Game Night Bot • Interactive Gaming Community")
             
-            await ctx.followup.send(embed=embed, file=discord_file)
+            await interaction.followup.send(embed=embed, file=discord_file)
             
             # Log the export
             self.logger.info(
-                f"Calendar export generated for guild {ctx.guild.id} by user {ctx.user.id}, "
+                f"Calendar export generated for guild {interaction.guild.id} by user {interaction.user.id}, "
                 f"{len(events)} events, {days_ahead} days ahead"
             )
             
         except Exception as e:
             self.logger.error(f"Error exporting calendar: {e}", exc_info=True)
-            await ctx.followup.send(
-                "❌ An error occurred while generating the calendar export.",
+            await interaction.followup.send(
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
@@ -1574,109 +1587,111 @@ class EventsCog(commands.Cog, LoggerMixin):
         
         return await self.bot.discord_events.sync_rsvps_from_discord(event)
     
-    @commands.slash_command(name="sync-rsvps", description="Manually sync RSVPs from Discord scheduled event")
+    @commands.slash_command(
+        name="sync-rsvps", 
+        description="Manually sync RSVPs from Discord scheduled event"
+    )
+    @app_commands.describe(event_id="ID of the event to sync RSVPs for")
     @require_permission(Permission.MANAGE_EVENTS)
     async def sync_rsvps_command(
         self,
-        ctx: discord.ApplicationContext,
-        event_id: str = discord.Option(
-            str,
-            description="Event ID to sync RSVPs for"
-        )
+        interaction: discord.Interaction,
+        event_id: str
     ):
         """Manually sync RSVPs from Discord scheduled event."""
         try:
-            await ctx.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=True)
             
             # Get the event
             event = await self.get_event(event_id)
             if not event:
-                await ctx.followup.send("❌ Event not found.", ephemeral=True)
+                await interaction.followup.send("❌ Event not found.", ephemeral=True)
                 return
             
-            if event.guild_id != str(ctx.guild.id):
-                await ctx.followup.send("❌ Event not found in this server.", ephemeral=True)
+            if event.guild_id != str(interaction.guild.id):
+                await interaction.followup.send("❌ Event not found in this server.", ephemeral=True)
                 return
             
             if not event.discord_event_id:
-                await ctx.followup.send("❌ This event is not linked to a Discord scheduled event.", ephemeral=True)
+                await interaction.followup.send("❌ This event is not linked to a Discord scheduled event.", ephemeral=True)
                 return
             
             # Sync RSVPs
             synced_count = await self.sync_discord_rsvps(event)
             
             if synced_count > 0:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     f"✅ Synced **{synced_count}** RSVPs from Discord scheduled event.",
                     ephemeral=True
                 )
             else:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     "ℹ️ No new RSVPs to sync from Discord scheduled event.",
                     ephemeral=True
                 )
             
         except Exception as e:
             self.logger.error(f"Error syncing RSVPs: {e}", exc_info=True)
-            await ctx.followup.send(
-                "❌ An error occurred while syncing RSVPs.",
+            await interaction.followup.send(
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @commands.slash_command(name="retry-discord-event", description="Retry creating Discord scheduled event")
+    @commands.slash_command(
+        name="retry-discord-event", 
+        description="Retry creating Discord scheduled event"
+    )
+    @app_commands.describe(event_id="ID of the event to retry Discord integration for")
     @require_permission(Permission.MANAGE_EVENTS)
     async def retry_discord_event(
         self,
-        ctx: discord.ApplicationContext,
-        event_id: str = discord.Option(
-            str,
-            description="Event ID to retry Discord event creation for"
-        )
+        interaction: discord.Interaction,
+        event_id: str
     ):
         """Retry creating a Discord scheduled event for a bot event."""
         try:
-            await ctx.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=True)
             
             # Get the event
             event = await self.get_event(event_id)
             if not event:
-                await ctx.followup.send("❌ Event not found.", ephemeral=True)
+                await interaction.followup.send("❌ Event not found.", ephemeral=True)
                 return
             
-            if event.guild_id != str(ctx.guild.id):
-                await ctx.followup.send("❌ Event not found in this server.", ephemeral=True)
+            if event.guild_id != str(interaction.guild.id):
+                await interaction.followup.send("❌ Event not found in this server.", ephemeral=True)
                 return
             
             if not event.is_scheduled():
-                await ctx.followup.send("❌ Event must be scheduled before creating Discord event.", ephemeral=True)
+                await interaction.followup.send("❌ Event must be scheduled before creating Discord event.", ephemeral=True)
                 return
             
             if event.discord_event_id:
-                await ctx.followup.send("❌ Event already has a Discord scheduled event.", ephemeral=True)
+                await interaction.followup.send("❌ Event already has a Discord scheduled event.", ephemeral=True)
                 return
             
             # Attempt to create Discord event
             if not self.bot.discord_events:
-                await ctx.followup.send("❌ Discord events integration not available.", ephemeral=True)
+                await interaction.followup.send("❌ Discord events integration not available.", ephemeral=True)
                 return
             
             discord_event_id = await self.bot.discord_events.create_discord_event(event)
             
             if discord_event_id:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     f"✅ Successfully created Discord scheduled event for **{event.title}**.",
                     ephemeral=True
                 )
             else:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     f"❌ Failed to create Discord scheduled event for **{event.title}**. Check logs for details.",
                     ephemeral=True
                 )
             
         except Exception as e:
             self.logger.error(f"Error retrying Discord event creation: {e}", exc_info=True)
-            await ctx.followup.send(
-                "❌ An error occurred while retrying Discord event creation.",
+            await interaction.followup.send(
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
 
@@ -1919,11 +1934,8 @@ async def setup(bot):
         
         info = poll_type_info.get(poll.poll_type, {"emoji": "📊", "color": discord.Color.grey()})
         
-        embed = discord.Embed(
-            title=f"{info['emoji']} {poll.title}",
-            description=poll.description or f"Vote for your preferred {poll.poll_type.value.lower()}!",
-            color=info["color"],
-            timestamp=datetime.utcnow()
+        embed = discord.Embed(title=f"{info['emoji']} {poll.title}", description=poll.description or f"Vote for your preferred {poll.poll_type.value.lower()}!", color=info["color"],
+            timestamp=datetime.utcnow(, timestamp=datetime.utcnow())
         )
         
         # Add event info
@@ -1987,7 +1999,15 @@ async def setup(bot):
         """Get analytics summary for a poll."""
         return self.poll_manager.get_poll_analytics(event_id, poll_type)
     
-    @commands.slash_command(name="poll-extend", description="Extend an active poll")
+    @commands.slash_command(
+        name="poll-extend", 
+        description="Extend voting time for an active poll"
+    )
+    @app_commands.describe(
+        event_id="ID of the event with the poll to extend",
+        poll_type="Type of poll: date, time, or game",
+        minutes="Minutes to extend (5-60, default: 15)"
+    )
     @require_permission(Permission.MANAGE_EVENTS)
     async def extend_poll_command(
         self, 
@@ -2045,11 +2065,18 @@ async def setup(bot):
         except Exception as e:
             self.logger.error(f"Error extending poll: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while extending the poll.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )
     
-    @commands.slash_command(name="poll-analytics", description="View poll analytics")
+    @commands.slash_command(
+        name="poll-analytics", 
+        description="View detailed analytics for a poll"
+    )
+    @app_commands.describe(
+        event_id="ID of the event to view poll analytics for",
+        poll_type="Type of poll: date, time, or game"
+    )
     @require_permission(Permission.VIEW_ANALYTICS)
     async def poll_analytics_command(
         self, 
@@ -2106,6 +2133,6 @@ async def setup(bot):
         except Exception as e:
             self.logger.error(f"Error getting poll analytics: {e}", exc_info=True)
             await interaction.response.send_message(
-                "❌ An error occurred while retrieving analytics.",
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
                 ephemeral=True
             )

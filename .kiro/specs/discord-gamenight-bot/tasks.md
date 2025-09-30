@@ -75,7 +75,7 @@
   - Add game categories and tagging system for better organization
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
-- [ ] 9. Prepare deployment-ready version and validate Discord UI
+- [x] 9. Prepare deployment-ready version and validate Discord UI
   - Audit all existing Discord slash commands for proper formatting, descriptions, and parameter validation
   - Ensure all embeds have consistent styling, proper field limits, and mobile-friendly formatting
   - Validate all interactive components (buttons, dropdowns, modals) work correctly and have proper error states
@@ -158,6 +158,7 @@
   - Build basic dashboard layout with responsive design and navigation
   - Add CSRF protection and security headers for web security
   - Create API authentication and rate limiting middleware
+  - **NOTE:** Web container was removed from docker-compose.yml during deployment setup - add back when web dashboard is ready
   - _Requirements: 8.1, 8.2, 10.3_
 
 - [ ] 18. Implement core dashboard pages and functionality
