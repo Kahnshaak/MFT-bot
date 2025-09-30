@@ -90,7 +90,8 @@ class GameNightBot(commands.Bot):
             cogs_to_load = [
                 'cogs.events',
                 'cogs.users', 
-                'cogs.games'
+                'cogs.games',
+                'cogs.notifications'
             ]
             
             for cog in cogs_to_load:

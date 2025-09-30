@@ -1404,7 +1404,10 @@ class EventsCog(commands.Cog, LoggerMixin):
             EventState.CANCELLED: discord.Color.red()
         }
         
-        embed = discord.Embed(title=f"🎮 {event.title}", description=event.description or "No description provided", color=color_map.get(event.state, discord.Color.default(, timestamp=datetime.utcnow())),
+        embed = discord.Embed(
+            title=f"🎮 {event.title}", 
+            description=event.description or "No description provided", 
+            color=color_map.get(event.state, discord.Color.default()),
             timestamp=datetime.utcnow()
         )
         
@@ -1462,7 +1465,10 @@ class EventsCog(commands.Cog, LoggerMixin):
     
     def create_poll_embed(self, poll: Poll, event: Event) -> discord.Embed:
         """Create Discord embed for poll display."""
-        embed = discord.Embed(title=poll.title, description=poll.description, color=discord.Color.blue(, timestamp=datetime.utcnow()),
+        embed = discord.Embed(
+            title=poll.title, 
+            description=poll.description, 
+            color=discord.Color.blue(),
             timestamp=datetime.utcnow()
         )
         
@@ -1555,7 +1561,10 @@ class EventsCog(commands.Cog, LoggerMixin):
             filename = f"gamenight_events_{interaction.guild.name}_{datetime.utcnow().strftime('%Y%m%d')}.ics"
             discord_file = discord.File(calendar_file, filename=filename)
             
-            embed = discord.Embed(title="📅 Calendar Export", description=f"Exported **{len(events)}** scheduled events from the next {days_ahead} days.", color=discord.Color.green(, timestamp=datetime.utcnow()),
+            embed = discord.Embed(
+                title="📅 Calendar Export", 
+                description=f"Exported **{len(events)}** scheduled events from the next {days_ahead} days.", 
+                color=discord.Color.green(),
                 timestamp=datetime.utcnow()
             )
             embed.add_field(
@@ -1934,8 +1943,11 @@ async def setup(bot):
         
         info = poll_type_info.get(poll.poll_type, {"emoji": "📊", "color": discord.Color.grey()})
         
-        embed = discord.Embed(title=f"{info['emoji']} {poll.title}", description=poll.description or f"Vote for your preferred {poll.poll_type.value.lower()}!", color=info["color"],
-            timestamp=datetime.utcnow(, timestamp=datetime.utcnow())
+        embed = discord.Embed(
+            title=f"{info['emoji']} {poll.title}", 
+            description=poll.description or f"Vote for your preferred {poll.poll_type.value.lower()}!", 
+            color=info["color"],
+            timestamp=datetime.utcnow()
         )
         
         # Add event info

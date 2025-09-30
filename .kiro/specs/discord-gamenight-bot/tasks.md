@@ -95,7 +95,7 @@
   - Test Docker container builds and runs successfully with proper logging output
   - _Requirements: 9.1, 9.2, 10.1, 10.2, 10.5_
 
-- [ ] 11. Implement basic notification and reminder system
+- [x] 11. Implement basic notification and reminder system
   - Create Notifications cog with essential reminder functionality for events
   - Build simple notification scheduling for event reminders (24h, 1h before events)
   - Implement basic reminder delivery via Discord DMs and server channels
@@ -104,7 +104,7 @@
   - Add retry logic for failed notification deliveries with simple exponential backoff
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 12. Build timestamp conversion utilities
+- [-] 12. Build timestamp conversion utilities
   - Create Timestamps cog with timezone conversion commands (/time convert, /time zone, /time format)
   - Implement Discord timestamp format generation for all supported formats with preview
   - Add timezone detection and validation with comprehensive timezone database and aliases
