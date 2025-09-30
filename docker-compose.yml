@@ -16,6 +16,12 @@ services:
       - ./docker/mongo-init:/docker-entrypoint-initdb.d
     networks:
       - gamenight_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   bot:
     build:
@@ -31,15 +37,24 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dummy_jwt_secret}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - WEB_HOST=${WEB_HOST:-0.0.0.0}
+      - WEB_PORT=${WEB_PORT:-8000}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
     volumes:
       - ./logs:/app/logs
       - ./src:/app/src
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     networks:
       - gamenight_network
-
-
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from core.startup_validator import StartupValidator; import asyncio; asyncio.run(StartupValidator().validate_all())"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
 
 volumes:
   mongodb_data:

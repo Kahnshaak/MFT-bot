@@ -5,13 +5,14 @@ Main bot entry point for the Discord Game Night Scheduling Bot.
 import asyncio
 import logging
 import os
+import sys
+import signal
 from typing import Optional
 
 import discord
 from discord.ext import commands
 
-import sys
-import os
+# Add src directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
@@ -22,7 +23,9 @@ from core.health_monitor import HealthMonitor
 from core.validation_manager import ValidationManager
 from core.audit_logger import AuditLogger
 from core.discord_events_manager import DiscordEventsManager
+from core.startup_validator import StartupValidator, ValidationError
 from database.manager import DatabaseManager
+from database.migrations import initialize_database
 from utils.logging_config import setup_logging
 
 
@@ -66,6 +69,10 @@ class GameNightBot(commands.Bot):
             self.database = DatabaseManager(self.settings.database_url)
             await self.database.connect()
             
+            # Initialize database schema and run migrations
+            self.logger.info("Initializing database schema...")
+            await initialize_database(self.database)
+            
             # Initialize core systems
             self.event_bus = EventBus()
             self.security = SecurityManager(self.settings)
@@ -79,11 +86,20 @@ class GameNightBot(commands.Bot):
             self.event_bus.add_middleware(self._metrics_middleware)
             self.event_bus.add_middleware(self._audit_middleware)
             
-            # Load cogs
-            await self.load_extension('cogs.events')
-            await self.load_extension('cogs.users')
-            await self.load_extension('cogs.games')
-            # etc.
+            # Load cogs with error handling
+            cogs_to_load = [
+                'cogs.events',
+                'cogs.users', 
+                'cogs.games'
+            ]
+            
+            for cog in cogs_to_load:
+                try:
+                    await self.load_extension(cog)
+                    self.logger.info(f"Loaded cog: {cog}")
+                except Exception as e:
+                    self.logger.error(f"Failed to load cog {cog}: {e}")
+                    # Continue loading other cogs
             
             self.logger.info("Bot setup completed successfully")
             
@@ -288,23 +304,125 @@ class GameNightBot(commands.Bot):
 
 
 async def main():
-    """Main entry point."""
-    # Set up logging
-    setup_logging()
-    
-    bot = GameNightBot()
-    
+    """Main entry point with comprehensive startup validation."""
+    # Initialize settings first
     try:
-        await bot.start(bot.settings.discord_token)
-    except KeyboardInterrupt:
-        logging.info("Received interrupt signal, shutting down...")
+        settings = Settings()
     except Exception as e:
-        logging.error(f"Bot crashed: {e}")
-        raise
+        print(f"❌ Failed to load settings: {e}")
+        print("Please check your .env file and environment variables.")
+        sys.exit(1)
+    
+    # Set up logging
+    try:
+        setup_logging(settings)
+        logger = logging.getLogger(__name__)
+    except Exception as e:
+        print(f"❌ Failed to setup logging: {e}")
+        sys.exit(1)
+    
+    logger.info("🚀 Starting Discord Game Night Bot...")
+    logger.info(f"Environment: {settings.environment}")
+    logger.info(f"Log Level: {settings.log_level}")
+    
+    # Run startup validation
+    try:
+        logger.info("Running startup validation...")
+        validator = StartupValidator(settings)
+        validation_success, validation_results = await validator.validate_all()
+        
+        if not validation_success:
+            logger.error("❌ Startup validation failed!")
+            validator.print_detailed_report()
+            
+            # Print helpful error messages
+            print("\n💡 TROUBLESHOOTING TIPS:")
+            print("1. Check your .env file exists and has all required variables")
+            print("2. Ensure MongoDB is running and accessible")
+            print("3. Verify your Discord bot token is valid")
+            print("4. Check file permissions for logs directory")
+            print("5. Run 'python -m pip install -r requirements.txt' to install dependencies")
+            
+            sys.exit(1)
+        
+        logger.info("✅ Startup validation passed!")
+        
+    except ValidationError as e:
+        logger.error(f"❌ Validation error: {e}")
+        if hasattr(e, 'details') and e.details:
+            logger.error(f"Details: {e.details}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Unexpected validation error: {e}")
+        sys.exit(1)
+    
+    # Initialize bot
+    bot = None
+    try:
+        logger.info("Initializing bot...")
+        bot = GameNightBot()
+        
+        # Set up graceful shutdown handlers
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+            asyncio.create_task(shutdown_bot(bot))
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        # Start the bot
+        logger.info("🎮 Bot starting up...")
+        await bot.start(settings.discord_token)
+        
+    except discord.LoginFailure:
+        logger.error("❌ Invalid Discord token. Please check your DISCORD_TOKEN environment variable.")
+        sys.exit(1)
+    except discord.HTTPException as e:
+        logger.error(f"❌ Discord HTTP error: {e}")
+        logger.error("This might be a temporary Discord API issue. Please try again later.")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal, shutting down...")
+    except Exception as e:
+        logger.error(f"❌ Bot crashed: {e}", exc_info=True)
+        sys.exit(1)
     finally:
-        if bot.database:
-            await bot.database.disconnect()
+        await shutdown_bot(bot)
+
+
+async def shutdown_bot(bot: Optional[GameNightBot]) -> None:
+    """Gracefully shutdown the bot and cleanup resources."""
+    logger = logging.getLogger(__name__)
+    
+    if bot:
+        try:
+            logger.info("Shutting down bot...")
+            
+            # Stop health monitoring
+            if hasattr(bot, 'health_monitor') and bot.health_monitor:
+                await bot.health_monitor.stop_monitoring()
+            
+            # Close database connection
+            if hasattr(bot, 'database') and bot.database:
+                await bot.database.disconnect()
+                logger.info("Database connection closed")
+            
+            # Close bot connection
+            if not bot.is_closed():
+                await bot.close()
+                logger.info("Bot connection closed")
+                
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+    
+    logger.info("🛑 Bot shutdown complete")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n👋 Bot stopped by user")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        sys.exit(1)
