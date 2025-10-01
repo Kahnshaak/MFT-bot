@@ -92,7 +92,8 @@ class GameNightBot(commands.Bot):
                 'cogs.users', 
                 'cogs.games',
                 'cogs.notifications',
-                'cogs.timestamps'
+                'cogs.timestamps',
+                'cogs.admin'
             ]
             
             for cog in cogs_to_load:
@@ -337,17 +338,30 @@ async def main():
             logger.error("❌ Startup validation failed!")
             validator.print_detailed_report()
             
-            # Print helpful error messages
-            print("\n💡 TROUBLESHOOTING TIPS:")
-            print("1. Check your .env file exists and has all required variables")
-            print("2. Ensure MongoDB is running and accessible")
-            print("3. Verify your Discord bot token is valid")
-            print("4. Check file permissions for logs directory")
-            print("5. Run 'python -m pip install -r requirements.txt' to install dependencies")
+            # Check if only Discord validation failed and we're in development
+            failed_categories = validation_results.get('summary', {}).get('failed_categories', [])
+            discord_only_failure = (
+                len(failed_categories) == 1 and 
+                'discord' in failed_categories and 
+                settings.is_development
+            )
             
-            sys.exit(1)
-        
-        logger.info("✅ Startup validation passed!")
+            if discord_only_failure:
+                logger.warning("⚠️  Only Discord validation failed in development mode")
+                logger.warning("   This is often due to invalid token or bot not being in any servers")
+                logger.warning("   Continuing startup - bot will work for database operations")
+            else:
+                # Print helpful error messages
+                print("\n💡 TROUBLESHOOTING TIPS:")
+                print("1. Check your .env file exists and has all required variables")
+                print("2. Ensure MongoDB is running and accessible")
+                print("3. Verify your Discord bot token is valid")
+                print("4. Check file permissions for logs directory")
+                print("5. Run 'python -m pip install -r requirements.txt' to install dependencies")
+                
+                sys.exit(1)
+        else:
+            logger.info("✅ Startup validation passed!")
         
     except ValidationError as e:
         logger.error(f"❌ Validation error: {e}")

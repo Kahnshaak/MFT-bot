@@ -7,5 +7,6 @@ Individual cogs are loaded by the bot as needed.
 
 # Import cogs for easier access
 from .events import EventsCog
+from .admin import AdminCog
 
-__all__ = ['EventsCog']
+__all__ = ['EventsCog', 'AdminCog']

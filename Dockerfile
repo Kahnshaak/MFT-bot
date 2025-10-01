@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -17,6 +18,9 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY .env.example ./
 
+# Copy .env file if it exists (for local development)
+COPY .env* ./
+
 # Create necessary directories
 RUN mkdir -p /app/logs
 
@@ -25,14 +29,18 @@ ENV PYTHONPATH=/app/src
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import asyncio; from src.core.startup_validator import StartupValidator; \
-    async def check(): \
-        try: \
-            validator = StartupValidator(); \
-            success, _ = await validator.validate_all(); \
-            exit(0 if success else 1); \
-        except: exit(1); \
-    asyncio.run(check())" || exit 1
+    CMD python -c "import sys; sys.path.append('/app/src'); \
+    from core.startup_validator import StartupValidator; \
+    import asyncio; \
+    try: \
+        result = asyncio.run(StartupValidator().validate_all()); \
+        exit(0 if result[0] else 1); \
+    except Exception as e: \
+        print(f'Health check failed: {e}'); \
+        exit(1);" || exit 1
 
-# Run startup validation before starting bot
-CMD ["sh", "-c", "python scripts/validate-env.py && python src/bot.py"]
+# Make entrypoint script executable and use it
+RUN chmod +x scripts/docker-entrypoint.sh
+
+# Use the entrypoint script
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]

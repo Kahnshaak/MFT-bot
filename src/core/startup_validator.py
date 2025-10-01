@@ -383,10 +383,10 @@ class StartupValidator(LoggerMixin):
             
             client = discord.Client(intents=intents)
             
-            # Test connection with timeout
-            connection_task = client.start(self.settings.discord_token)
-            
             try:
+                # Create a task for the client connection
+                connection_task = asyncio.create_task(client.start(self.settings.discord_token))
+                
                 # Wait for ready event with timeout
                 await asyncio.wait_for(
                     self._wait_for_discord_ready(client),
@@ -429,8 +429,17 @@ class StartupValidator(LoggerMixin):
             except Exception as e:
                 issues.append(f"Discord connection error: {e}")
             finally:
+                # Properly close the client and cancel the connection task
                 if not client.is_closed():
                     await client.close()
+                
+                # Cancel the connection task if it's still running
+                if 'connection_task' in locals() and not connection_task.done():
+                    connection_task.cancel()
+                    try:
+                        await connection_task
+                    except asyncio.CancelledError:
+                        pass
                 
         except Exception as e:
             issues.append(f"Discord validation setup error: {e}")

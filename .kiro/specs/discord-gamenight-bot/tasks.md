@@ -114,7 +114,7 @@
   - Implement time zone lookup and information commands
   - _Requirements: 5.1, 5.2, 5.5, 5.6_
 
-- [ ] 13. Create basic administrative commands and controls
+- [x] 13. Create basic administrative commands and controls
   - Create Admin cog with essential server configuration management (/admin config, /admin roles)
   - Build role mapping interface for permission configuration with interactive setup
   - Add server statistics commands for administrators with basic event and user metrics
@@ -123,7 +123,7 @@
   - Add server health monitoring and diagnostic commands for troubleshooting
   - _Requirements: 6.1, 6.3, 6.5, 9.6_
 
-- [ ] 14. Create recurring events automation system
+- [-] 14. Create recurring events automation system
   - Build Recurring cog with schedule configuration commands (/recurring create, /recurring list, /recurring manage)
   - Implement cron-like scheduling with monthly and weekly patterns and timezone support
   - Create template-based event generation with variable substitution and dynamic content
@@ -131,6 +131,7 @@
   - Implement schedule pause/resume functionality with state management and conflict resolution
   - Create execution history tracking and error logging for failed triggers with admin notifications
   - Add recurring event preview and testing functionality
+  - Create background task system for processing scheduled events automatically
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
 - [ ] 15. Enhance error handling and recovery systems
@@ -151,14 +152,14 @@
   - Implement log aggregation and analysis for troubleshooting
   - _Requirements: 9.1, 9.2, 9.5, 9.6_
 
-- [ ] 17. Build web dashboard foundation
-  - Set up Flask/FastAPI web framework with proper project structure
-  - Implement Discord OAuth2 authentication with guild verification
-  - Create JWT session management with configurable expiration
-  - Build basic dashboard layout with responsive design and navigation
+- [ ] 17. Complete web dashboard foundation
+  - Implement Discord OAuth2 authentication with guild verification and proper error handling
+  - Create JWT session management with configurable expiration and refresh tokens
+  - Build comprehensive API authentication and authorization middleware
   - Add CSRF protection and security headers for web security
-  - Create API authentication and rate limiting middleware
-  - **NOTE:** Web container was removed from docker-compose.yml during deployment setup - add back when web dashboard is ready
+  - Create proper error handling and validation for all web endpoints
+  - Add Docker container configuration back to docker-compose.yml for web service
+  - Implement proper logging and monitoring for web dashboard
   - _Requirements: 8.1, 8.2, 10.3_
 
 - [ ] 18. Implement core dashboard pages and functionality
@@ -179,15 +180,33 @@
   - Add mobile responsiveness and accessibility compliance
   - _Requirements: 8.1, 8.3, 8.4, 8.6_
 
-- [ ] 20. Create comprehensive testing suite and production readiness
-  - Write unit tests for all core functions with 90% coverage target
-  - Create integration tests for complete workflows and cross-component interactions
-  - Implement end-to-end testing scenarios for full user journeys
-  - Add performance testing for concurrent usage and load scenarios
-  - Create security testing for input validation and permission systems
-  - Build automated testing pipeline with continuous integration
-  - Write comprehensive user documentation with setup guides and tutorials
-  - Create administrator documentation with configuration and troubleshooting guides
-  - Implement backup and disaster recovery procedures
+- [ ] 20. Implement comprehensive testing and validation
+  - Write unit tests for recurring events system with schedule calculation and execution logic
+  - Create integration tests for complete event workflows from creation to completion
+  - Implement end-to-end testing scenarios for multi-user poll participation and RSVP flows
+  - Add performance testing for concurrent command usage and database operations
+  - Create security testing for input validation, permission systems, and rate limiting
+  - Write tests for error handling and recovery scenarios across all systems
+  - Test Discord API integration with mock responses and rate limit scenarios
+  - Validate timezone handling and conversion accuracy across different regions
+  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 10.1, 10.2, 10.5_
+
+- [x] 21. Fix Docker environment configuration and deployment issues
+  - Fix Docker container environment variable loading (bot showing as offline)
+  - Ensure .env file is properly handled in Docker container or environment variables are correctly passed
+  - Verify Discord token and database connection are working in containerized environment
+  - Test bot startup and health checks in Docker environment
+  - Fix any missing dependencies or configuration issues preventing bot from connecting
+  - Update docker-compose.yml to properly handle environment variable precedence
+  - _Requirements: 10.1, 10.2, 10.5_
+
+- [ ] 22. Create production deployment and documentation
+  - Write comprehensive deployment guide with Docker setup and configuration
+  - Create administrator documentation with bot setup, permissions, and troubleshooting
+  - Implement backup and disaster recovery procedures for database and configuration
+  - Add monitoring and alerting setup documentation for production environments
+  - Create user guides for all bot commands and features with examples
+  - Write API documentation for web dashboard endpoints
+  - Implement automated deployment scripts and health checks
   - Conduct final user acceptance testing with real Discord communities
-  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
+  - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
