@@ -881,7 +881,6 @@ class EventsCog(commands.Cog, LoggerMixin):
         name="event-manage", 
         description="Manage a specific event (admin only)"
     )
-    @app_commands.describe(event_id="ID of the event to manage (from /events list)")
     @require_permission(Permission.MANAGE_EVENTS)
     async def manage_event_command(self, interaction: discord.Interaction, event_id: str):
         """Manage a specific event by ID."""
@@ -1506,9 +1505,6 @@ class EventsCog(commands.Cog, LoggerMixin):
         name="calendar", 
         description="Export upcoming events to calendar file (.ics)"
     )
-    @app_commands.describe(
-        days_ahead="Number of days to include (1-90, default: 30)"
-    )
     async def export_calendar(
         self,
         interaction: discord.Interaction,
@@ -1600,7 +1596,6 @@ class EventsCog(commands.Cog, LoggerMixin):
         name="sync-rsvps", 
         description="Manually sync RSVPs from Discord scheduled event"
     )
-    @app_commands.describe(event_id="ID of the event to sync RSVPs for")
     @require_permission(Permission.MANAGE_EVENTS)
     async def sync_rsvps_command(
         self,
@@ -1650,7 +1645,6 @@ class EventsCog(commands.Cog, LoggerMixin):
         name="retry-discord-event", 
         description="Retry creating Discord scheduled event"
     )
-    @app_commands.describe(event_id="ID of the event to retry Discord integration for")
     @require_permission(Permission.MANAGE_EVENTS)
     async def retry_discord_event(
         self,
@@ -2015,11 +2009,6 @@ async def setup(bot):
         name="poll-extend", 
         description="Extend voting time for an active poll"
     )
-    @app_commands.describe(
-        event_id="ID of the event with the poll to extend",
-        poll_type="Type of poll: date, time, or game",
-        minutes="Minutes to extend (5-60, default: 15)"
-    )
     @require_permission(Permission.MANAGE_EVENTS)
     async def extend_poll_command(
         self, 
@@ -2084,10 +2073,6 @@ async def setup(bot):
     @commands.slash_command(
         name="poll-analytics", 
         description="View detailed analytics for a poll"
-    )
-    @app_commands.describe(
-        event_id="ID of the event to view poll analytics for",
-        poll_type="Type of poll: date, time, or game"
     )
     @require_permission(Permission.VIEW_ANALYTICS)
     async def poll_analytics_command(
