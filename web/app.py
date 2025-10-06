@@ -1309,6 +1309,783 @@ async def get_csrf_token(current_user: UserSession = Depends(require_authenticat
     }
 
 
+# ============================================================================
+# COMPREHENSIVE REST API ENDPOINTS
+# ============================================================================
+
+# API Models for request/response validation
+class EventCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    guild_id: str
+    duration_minutes: Optional[int] = None
+    default_games: Optional[List[str]] = []
+
+class EventUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    state: Optional[str] = None
+
+class UserPreferencesRequest(BaseModel):
+    timezone: Optional[str] = None
+    notification_preferences: Optional[Dict[str, Any]] = None
+    availability: Optional[Dict[str, Any]] = None
+
+class GameInterestRequest(BaseModel):
+    game_name: str
+    action: str  # "add" or "remove"
+
+class ConfigUpdateRequest(BaseModel):
+    settings: Dict[str, Any]
+
+class SearchRequest(BaseModel):
+    query: str
+    filters: Optional[Dict[str, Any]] = {}
+    sort_by: Optional[str] = "created_at"
+    sort_order: Optional[str] = "desc"
+    limit: Optional[int] = 50
+    offset: Optional[int] = 0
+
+# ============================================================================
+# EVENTS API - Full CRUD Operations
+# ============================================================================
+
+@app.post("/api/events")
+async def create_event(
+    event_data: EventCreateRequest,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Create a new event."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Verify user has permission for this guild
+        if event_data.guild_id not in current_user.guild_ids:
+            raise HTTPException(status_code=403, detail="No permission for this guild")
+        
+        # Create event document
+        event_doc = {
+            "guild_id": event_data.guild_id,
+            "title": event_data.title,
+            "description": event_data.description or "",
+            "creator_id": current_user.user_id,
+            "state": "DRAFT",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "schedule": {
+                "selected_date": None,
+                "selected_time": None,
+                "timezone": "UTC",
+                "duration_minutes": event_data.duration_minutes
+            },
+            "polls": {
+                "date_poll": None,
+                "time_poll": None,
+                "game_poll": None
+            },
+            "rsvp_data": {},
+            "attendance": {},
+            "default_games": event_data.default_games or []
+        }
+        
+        result = await database.events.insert_one(event_doc)
+        event_doc["_id"] = str(result.inserted_id)
+        
+        log_api_access(current_user.user_id, "POST", "/api/events", "success")
+        logger.info("Event created", event_id=str(result.inserted_id), user_id=current_user.user_id)
+        
+        return {
+            "success": True,
+            "data": event_doc,
+            "message": "Event created successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "POST", "/api/events", "error", {"error": str(e)})
+        logger.error("Event creation error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Event creation error: {str(e)}")
+
+@app.get("/api/events/{event_id}")
+async def get_event(
+    event_id: str,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Get a specific event by ID."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        from bson import ObjectId
+        try:
+            object_id = ObjectId(event_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid event ID format")
+        
+        event = await database.events.find_one({"_id": object_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Check permission
+        if event["guild_id"] not in current_user.guild_ids:
+            raise HTTPException(status_code=403, detail="No permission to view this event")
+        
+        # Convert ObjectId to string
+        event["_id"] = str(event["_id"])
+        
+        return {
+            "success": True,
+            "data": event,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Get event error", error=str(e), event_id=event_id, user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Get event error: {str(e)}")
+
+@app.put("/api/events/{event_id}")
+async def update_event(
+    event_id: str,
+    event_data: EventUpdateRequest,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Update an existing event."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        from bson import ObjectId
+        try:
+            object_id = ObjectId(event_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid event ID format")
+        
+        # Get existing event
+        event = await database.events.find_one({"_id": object_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Check permission (creator or admin)
+        if (event["creator_id"] != current_user.user_id and 
+            event["guild_id"] not in current_user.guild_ids):
+            raise HTTPException(status_code=403, detail="No permission to update this event")
+        
+        # Build update document
+        update_doc = {"updated_at": datetime.utcnow()}
+        if event_data.title is not None:
+            update_doc["title"] = event_data.title
+        if event_data.description is not None:
+            update_doc["description"] = event_data.description
+        if event_data.duration_minutes is not None:
+            update_doc["schedule.duration_minutes"] = event_data.duration_minutes
+        if event_data.state is not None:
+            update_doc["state"] = event_data.state
+        
+        result = await database.events.update_one(
+            {"_id": object_id},
+            {"$set": update_doc}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=400, detail="No changes made")
+        
+        # Get updated event
+        updated_event = await database.events.find_one({"_id": object_id})
+        updated_event["_id"] = str(updated_event["_id"])
+        
+        log_api_access(current_user.user_id, "PUT", f"/api/events/{event_id}", "success")
+        logger.info("Event updated", event_id=event_id, user_id=current_user.user_id)
+        
+        return {
+            "success": True,
+            "data": updated_event,
+            "message": "Event updated successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "PUT", f"/api/events/{event_id}", "error", {"error": str(e)})
+        logger.error("Event update error", error=str(e), event_id=event_id, user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Event update error: {str(e)}")
+
+@app.delete("/api/events/{event_id}")
+async def delete_event(
+    event_id: str,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Delete/cancel an event."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        from bson import ObjectId
+        try:
+            object_id = ObjectId(event_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid event ID format")
+        
+        # Get existing event
+        event = await database.events.find_one({"_id": object_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Check permission (creator or admin)
+        if (event["creator_id"] != current_user.user_id and 
+            "admin" not in current_user.permissions):
+            raise HTTPException(status_code=403, detail="No permission to delete this event")
+        
+        # Soft delete by setting state to CANCELLED
+        result = await database.events.update_one(
+            {"_id": object_id},
+            {"$set": {"state": "CANCELLED", "updated_at": datetime.utcnow()}}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=400, detail="Event could not be cancelled")
+        
+        log_api_access(current_user.user_id, "DELETE", f"/api/events/{event_id}", "success")
+        logger.info("Event cancelled", event_id=event_id, user_id=current_user.user_id)
+        
+        return {
+            "success": True,
+            "message": "Event cancelled successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "DELETE", f"/api/events/{event_id}", "error", {"error": str(e)})
+        logger.error("Event deletion error", error=str(e), event_id=event_id, user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Event deletion error: {str(e)}")
+
+# ============================================================================
+# USERS API - Profile and Preferences Management
+# ============================================================================
+
+@app.get("/api/users/{user_id}")
+async def get_user_profile(
+    user_id: str,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Get user profile information."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Users can view their own profile, admins can view any profile
+        if (user_id != current_user.user_id and 
+            "admin" not in current_user.permissions):
+            raise HTTPException(status_code=403, detail="No permission to view this profile")
+        
+        user = await database.users.find_one({"user_id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Remove sensitive information
+        user.pop("_id", None)
+        
+        return {
+            "success": True,
+            "data": user,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Get user profile error", error=str(e), user_id=user_id)
+        raise HTTPException(status_code=500, detail=f"Get user profile error: {str(e)}")
+
+@app.put("/api/users/{user_id}/preferences")
+async def update_user_preferences(
+    user_id: str,
+    preferences: UserPreferencesRequest,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Update user preferences."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Users can only update their own preferences
+        if user_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="Can only update your own preferences")
+        
+        # Build update document
+        update_doc = {"updated_at": datetime.utcnow()}
+        if preferences.timezone is not None:
+            update_doc["profile.timezone"] = preferences.timezone
+        if preferences.notification_preferences is not None:
+            update_doc["profile.notification_preferences"] = preferences.notification_preferences
+        if preferences.availability is not None:
+            update_doc["profile.availability"] = preferences.availability
+        
+        result = await database.users.update_one(
+            {"user_id": user_id},
+            {"$set": update_doc},
+            upsert=True
+        )
+        
+        # Get updated user
+        updated_user = await database.users.find_one({"user_id": user_id})
+        if updated_user:
+            updated_user.pop("_id", None)
+        
+        log_api_access(current_user.user_id, "PUT", f"/api/users/{user_id}/preferences", "success")
+        logger.info("User preferences updated", user_id=user_id)
+        
+        return {
+            "success": True,
+            "data": updated_user,
+            "message": "Preferences updated successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "PUT", f"/api/users/{user_id}/preferences", "error", {"error": str(e)})
+        logger.error("Update user preferences error", error=str(e), user_id=user_id)
+        raise HTTPException(status_code=500, detail=f"Update preferences error: {str(e)}")
+
+@app.post("/api/users/{user_id}/games")
+async def manage_game_interests(
+    user_id: str,
+    game_request: GameInterestRequest,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Add or remove game interests for a user."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Users can only manage their own game interests
+        if user_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="Can only manage your own game interests")
+        
+        if game_request.action == "add":
+            result = await database.users.update_one(
+                {"user_id": user_id},
+                {
+                    "$addToSet": {"game_interests": game_request.game_name},
+                    "$set": {"updated_at": datetime.utcnow()}
+                },
+                upsert=True
+            )
+            message = f"Added interest in {game_request.game_name}"
+        elif game_request.action == "remove":
+            result = await database.users.update_one(
+                {"user_id": user_id},
+                {
+                    "$pull": {"game_interests": game_request.game_name},
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
+            )
+            message = f"Removed interest in {game_request.game_name}"
+        else:
+            raise HTTPException(status_code=400, detail="Action must be 'add' or 'remove'")
+        
+        # Get updated user
+        updated_user = await database.users.find_one({"user_id": user_id})
+        if updated_user:
+            updated_user.pop("_id", None)
+        
+        log_api_access(current_user.user_id, "POST", f"/api/users/{user_id}/games", "success")
+        logger.info("Game interests updated", user_id=user_id, action=game_request.action, game=game_request.game_name)
+        
+        return {
+            "success": True,
+            "data": updated_user,
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "POST", f"/api/users/{user_id}/games", "error", {"error": str(e)})
+        logger.error("Manage game interests error", error=str(e), user_id=user_id)
+        raise HTTPException(status_code=500, detail=f"Manage game interests error: {str(e)}")
+
+# ============================================================================
+# GAMES API - Game Management and Analytics
+# ============================================================================
+
+@app.get("/api/games")
+async def get_games(
+    current_user: UserSession = Depends(require_authentication),
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Get list of games with optional search."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Build aggregation pipeline
+        pipeline = []
+        
+        # Get all unique games from user interests and event data
+        pipeline.extend([
+            {"$group": {"_id": "$game_interests"}},
+            {"$unwind": "$_id"},
+            {"$group": {"_id": "$_id", "interest_count": {"$sum": 1}}}
+        ])
+        
+        # Add search filter if provided
+        if search:
+            pipeline.insert(0, {
+                "$match": {"game_interests": {"$regex": search, "$options": "i"}}
+            })
+        
+        # Add sorting and pagination
+        pipeline.extend([
+            {"$sort": {"interest_count": -1, "_id": 1}},
+            {"$skip": offset},
+            {"$limit": limit}
+        ])
+        
+        games_cursor = database.users.aggregate(pipeline)
+        games = await games_cursor.to_list(length=limit)
+        
+        # Format results
+        formatted_games = []
+        for game in games:
+            formatted_games.append({
+                "name": game["_id"],
+                "interest_count": game["interest_count"],
+                "popularity_score": game["interest_count"]  # Could be more complex
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "games": formatted_games,
+                "total_count": len(formatted_games),
+                "has_more": len(formatted_games) == limit
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error("Get games error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Get games error: {str(e)}")
+
+@app.get("/api/games/popular")
+async def get_popular_games(
+    current_user: UserSession = Depends(require_authentication),
+    limit: int = 10
+):
+    """Get most popular games by interest count."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        pipeline = [
+            {"$unwind": "$game_interests"},
+            {"$group": {
+                "_id": "$game_interests",
+                "interest_count": {"$sum": 1},
+                "users": {"$addToSet": "$user_id"}
+            }},
+            {"$sort": {"interest_count": -1}},
+            {"$limit": limit},
+            {"$project": {
+                "name": "$_id",
+                "interest_count": 1,
+                "unique_users": {"$size": "$users"},
+                "_id": 0
+            }}
+        ]
+        
+        popular_games_cursor = database.users.aggregate(pipeline)
+        popular_games = await popular_games_cursor.to_list(length=limit)
+        
+        return {
+            "success": True,
+            "data": popular_games,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error("Get popular games error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Get popular games error: {str(e)}")
+
+# ============================================================================
+# SEARCH API - Advanced Search and Filtering
+# ============================================================================
+
+@app.post("/api/search")
+async def advanced_search(
+    search_request: SearchRequest,
+    current_user: UserSession = Depends(require_authentication)
+):
+    """Advanced search across all data types."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        results = {
+            "events": [],
+            "users": [],
+            "games": []
+        }
+        
+        # Search events
+        event_filter = {"guild_id": {"$in": current_user.guild_ids}}
+        if search_request.query:
+            event_filter["$or"] = [
+                {"title": {"$regex": search_request.query, "$options": "i"}},
+                {"description": {"$regex": search_request.query, "$options": "i"}}
+            ]
+        
+        # Apply additional filters
+        if search_request.filters:
+            if "state" in search_request.filters:
+                event_filter["state"] = search_request.filters["state"]
+            if "creator_id" in search_request.filters:
+                event_filter["creator_id"] = search_request.filters["creator_id"]
+            if "date_range" in search_request.filters:
+                date_range = search_request.filters["date_range"]
+                if "start" in date_range:
+                    event_filter["created_at"] = {"$gte": datetime.fromisoformat(date_range["start"])}
+                if "end" in date_range:
+                    event_filter.setdefault("created_at", {})["$lte"] = datetime.fromisoformat(date_range["end"])
+        
+        # Sort configuration
+        sort_field = search_request.sort_by or "created_at"
+        sort_direction = -1 if search_request.sort_order == "desc" else 1
+        
+        events_cursor = database.events.find(event_filter).sort(sort_field, sort_direction).limit(search_request.limit).skip(search_request.offset)
+        events = await events_cursor.to_list(length=search_request.limit)
+        
+        for event in events:
+            event["_id"] = str(event["_id"])
+            results["events"].append(event)
+        
+        # Search users (admin only)
+        if "admin" in current_user.permissions:
+            user_filter = {}
+            if search_request.query:
+                user_filter["$or"] = [
+                    {"profile.username": {"$regex": search_request.query, "$options": "i"}},
+                    {"game_interests": {"$regex": search_request.query, "$options": "i"}}
+                ]
+            
+            users_cursor = database.users.find(user_filter).limit(search_request.limit).skip(search_request.offset)
+            users = await users_cursor.to_list(length=search_request.limit)
+            
+            for user in users:
+                user.pop("_id", None)
+                results["users"].append(user)
+        
+        # Search games
+        if search_request.query:
+            game_pipeline = [
+                {"$unwind": "$game_interests"},
+                {"$match": {"game_interests": {"$regex": search_request.query, "$options": "i"}}},
+                {"$group": {
+                    "_id": "$game_interests",
+                    "interest_count": {"$sum": 1}
+                }},
+                {"$sort": {"interest_count": -1}},
+                {"$limit": search_request.limit}
+            ]
+            
+            games_cursor = database.users.aggregate(game_pipeline)
+            games = await games_cursor.to_list(length=search_request.limit)
+            
+            for game in games:
+                results["games"].append({
+                    "name": game["_id"],
+                    "interest_count": game["interest_count"]
+                })
+        
+        log_api_access(current_user.user_id, "POST", "/api/search", "success")
+        
+        return {
+            "success": True,
+            "data": results,
+            "query": search_request.query,
+            "filters": search_request.filters,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "POST", "/api/search", "error", {"error": str(e)})
+        logger.error("Advanced search error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Advanced search error: {str(e)}")
+
+# ============================================================================
+# CONFIGURATION IMPORT/EXPORT API
+# ============================================================================
+
+@app.post("/api/config/import")
+async def import_configuration(
+    request: Request,
+    current_user: UserSession = Depends(require_admin_permissions)
+):
+    """Import configuration from uploaded file."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Get uploaded file
+        form = await request.form()
+        config_file = form.get("config_file")
+        
+        if not config_file:
+            raise HTTPException(status_code=400, detail="No configuration file provided")
+        
+        # Read and parse configuration
+        config_content = await config_file.read()
+        try:
+            config_data = json.loads(config_content.decode('utf-8'))
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON format")
+        
+        # Validate configuration structure
+        required_fields = ["version", "guild_configs", "timestamp"]
+        if not all(field in config_data for field in required_fields):
+            raise HTTPException(status_code=400, detail="Invalid configuration format")
+        
+        # Import guild configurations
+        imported_count = 0
+        for guild_id, guild_config in config_data["guild_configs"].items():
+            # Verify user has permission for this guild
+            if guild_id not in current_user.guild_ids:
+                continue
+            
+            await database.guild_configs.update_one(
+                {"guild_id": guild_id},
+                {"$set": {
+                    **guild_config,
+                    "updated_at": datetime.utcnow(),
+                    "imported_by": current_user.user_id
+                }},
+                upsert=True
+            )
+            imported_count += 1
+        
+        log_api_access(current_user.user_id, "POST", "/api/config/import", "success")
+        logger.info("Configuration imported", user_id=current_user.user_id, imported_count=imported_count)
+        
+        return {
+            "success": True,
+            "message": f"Successfully imported configuration for {imported_count} guilds",
+            "imported_count": imported_count,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "POST", "/api/config/import", "error", {"error": str(e)})
+        logger.error("Configuration import error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Configuration import error: {str(e)}")
+
+@app.get("/api/config/export")
+async def export_configuration(
+    current_user: UserSession = Depends(require_admin_permissions),
+    guild_ids: Optional[str] = None
+):
+    """Export configuration for specified guilds."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+        
+        # Parse guild IDs
+        target_guilds = []
+        if guild_ids:
+            target_guilds = guild_ids.split(",")
+            # Verify permissions
+            for guild_id in target_guilds:
+                if guild_id not in current_user.guild_ids:
+                    raise HTTPException(status_code=403, detail=f"No permission for guild {guild_id}")
+        else:
+            target_guilds = current_user.guild_ids
+        
+        # Get guild configurations
+        guild_configs = {}
+        for guild_id in target_guilds:
+            config = await database.guild_configs.find_one({"guild_id": guild_id})
+            if config:
+                config.pop("_id", None)
+                guild_configs[guild_id] = config
+        
+        # Build export data
+        export_data = {
+            "version": "1.0.0",
+            "exported_at": datetime.utcnow().isoformat(),
+            "exported_by": current_user.user_id,
+            "guild_configs": guild_configs
+        }
+        
+        log_api_access(current_user.user_id, "GET", "/api/config/export", "success")
+        logger.info("Configuration exported", user_id=current_user.user_id, guild_count=len(guild_configs))
+        
+        return {
+            "success": True,
+            "data": export_data,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_api_access(current_user.user_id, "GET", "/api/config/export", "error", {"error": str(e)})
+        logger.error("Configuration export error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Configuration export error: {str(e)}")
+
+# ============================================================================
+# API DOCUMENTATION ENDPOINT
+# ============================================================================
+
+@app.get("/api/docs/openapi.json")
+async def get_openapi_spec():
+    """Get OpenAPI specification for the API."""
+    return app.openapi()
+
+@app.get("/api/docs")
+async def api_documentation():
+    """Interactive API documentation."""
+    return HTMLResponse(content="""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Game Night Bot API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui.css" />
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui-bundle.js"></script>
+        <script>
+            SwaggerUIBundle({
+                url: '/api/docs/openapi.json',
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.presets.standalone
+                ]
+            });
+        </script>
+    </body>
+    </html>
+    """)
+
+
 @app.get("/events", response_class=HTMLResponse)
 async def events_page(request: Request, current_user: UserSession = Depends(require_authentication)):
     """Events management page."""
