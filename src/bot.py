@@ -80,6 +80,12 @@ class GameNightBot(commands.Bot):
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
+        
+        # Enhanced error handling components (initialized in setup_hook)
+        self.enhanced_error_handler = None
+        self.poll_edge_case_handler = None
+        self.degradation_manager = None
+        self.event_recovery_manager = None
     
     async def setup_hook(self):
         """Initialize bot components and load cogs."""
@@ -108,6 +114,27 @@ class GameNightBot(commands.Bot):
             self.database_recovery = DatabaseRecoveryManager(self.database)
             self.state_manager = SystemStateManager(self.database, self.event_bus)
             self.consistency_checker = DataConsistencyChecker(self.database, self.event_bus)
+            
+            # Initialize enhanced error handling components
+            from core.enhanced_error_handler import EnhancedErrorHandler
+            from core.poll_edge_case_handler import PollEdgeCaseHandler
+            from core.graceful_degradation_manager import GracefulDegradationManager, ServiceType
+            from core.event_recovery_manager import EventRecoveryManager
+            
+            self.enhanced_error_handler = EnhancedErrorHandler(self.recovery_manager, self.event_bus)
+            self.poll_edge_case_handler = PollEdgeCaseHandler(self.database, self.event_bus)
+            self.degradation_manager = GracefulDegradationManager(self.event_bus)
+            self.event_recovery_manager = EventRecoveryManager(self.database, self.event_bus)
+            
+            # Register health checkers for graceful degradation
+            self.degradation_manager.register_health_checker(
+                ServiceType.DATABASE,
+                self._check_database_health
+            )
+            self.degradation_manager.register_health_checker(
+                ServiceType.DISCORD_API,
+                self._check_discord_api_health
+            )
             
             # Initialize monitoring and alerting systems
             self.alerting_system = AlertingSystem(self.database)
@@ -458,6 +485,27 @@ class GameNightBot(commands.Bot):
                     )
         except Exception as e:
             self.logger.error(f"Error handling application command error: {e}", exc_info=True)
+    
+    # Health check methods for graceful degradation
+    
+    async def _check_database_health(self) -> bool:
+        """Check if database is healthy."""
+        try:
+            if not self.database:
+                return False
+            return await self.database.ping()
+        except Exception:
+            return False
+    
+    async def _check_discord_api_health(self) -> bool:
+        """Check if Discord API is healthy."""
+        try:
+            # Simple check - try to get bot user info
+            if self.user:
+                return True
+            return False
+        except Exception:
+            return False
 
 
 async def main():

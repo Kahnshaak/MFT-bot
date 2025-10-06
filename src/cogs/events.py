@@ -91,11 +91,21 @@ class EventCreationModal(discord.ui.Modal):
                 ephemeral=True
             )
         except Exception as e:
-            self.cog.logger.error(f"Error creating event: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
-                ephemeral=True
-            )
+            # Use enhanced error handler if available
+            if hasattr(self.cog.bot, 'enhanced_error_handler'):
+                await self.cog.bot.enhanced_error_handler.handle_interaction_error(
+                    interaction, e, {
+                        "operation": "event_creation",
+                        "title": self.title_input.value,
+                        "description": self.description_input.value
+                    }
+                )
+            else:
+                self.cog.logger.error(f"Error creating event: {e}", exc_info=True)
+                await interaction.response.send_message(
+                    "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
+                    ephemeral=True
+                )
 
 
 class DatePollView(discord.ui.View):

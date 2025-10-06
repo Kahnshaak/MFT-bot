@@ -210,49 +210,180 @@ async def safe_discord_request(
     func: Callable[..., T],
     *args,
     bucket: str = "default",
+    max_retries: int = 3,
+    enable_graceful_degradation: bool = True,
     **kwargs
 ) -> Optional[T]:
     """
-    Safely execute a Discord API request with rate limit handling.
+    Safely execute a Discord API request with comprehensive error handling.
     
     Args:
         func: The Discord API function to call
         *args: Arguments to pass to the function
         bucket: Rate limit bucket identifier
+        max_retries: Maximum number of retry attempts
+        enable_graceful_degradation: Whether to enable graceful degradation
         **kwargs: Keyword arguments to pass to the function
         
     Returns:
         Result of the function call, or None if it failed
     """
-    try:
-        # Wait for any active rate limits
-        await rate_limit_manager.wait_for_rate_limit(bucket)
-        
-        # Execute the request
-        return await func(*args, **kwargs)
+    from utils.exceptions import (
+        DiscordAPIError, ServiceUnavailableError, 
+        GracefulDegradationError, RateLimitedError
+    )
     
-    except discord.HTTPException as e:
-        # Handle rate limit response
-        rate_limit_manager.handle_rate_limit_response(e, bucket)
-        
-        if e.status == 429:
-            # Rate limited, wait and retry once
-            retry_after = getattr(e, 'retry_after', 1.0)
-            logger.warning(f"Rate limited, waiting {retry_after}s before retry")
-            await asyncio.sleep(retry_after)
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            # Wait for any active rate limits
+            await rate_limit_manager.wait_for_rate_limit(bucket)
             
-            try:
-                return await func(*args, **kwargs)
-            except Exception as retry_e:
-                logger.error(f"Retry failed for {func.__name__}: {retry_e}")
+            # Execute the request
+            return await func(*args, **kwargs)
+        
+        except discord.HTTPException as e:
+            last_exception = e
+            rate_limit_manager.handle_rate_limit_response(e, bucket)
+            
+            if e.status == 429:
+                # Rate limited
+                retry_after = getattr(e, 'retry_after', 1.0)
+                
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Rate limited on {func.__name__}, waiting {retry_after}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(retry_after)
+                    continue
+                else:
+                    if enable_graceful_degradation:
+                        logger.error(f"Rate limit exceeded for {func.__name__}, enabling graceful degradation")
+                        raise GracefulDegradationError(
+                            f"Discord API rate limited after {max_retries} attempts",
+                            degraded_features=[func.__name__]
+                        )
+                    else:
+                        raise RateLimitedError(
+                            f"Rate limited after {max_retries} attempts",
+                            retry_after=retry_after
+                        )
+            
+            elif e.status == 403:
+                # Forbidden - don't retry
+                logger.error(f"Discord API forbidden error in {func.__name__}: {e}")
+                raise DiscordAPIError(f"Forbidden: {e}", status_code=403)
+            
+            elif e.status == 404:
+                # Not found - don't retry
+                logger.warning(f"Discord resource not found in {func.__name__}: {e}")
                 return None
-        else:
-            logger.error(f"Discord API error in {func.__name__}: {e}")
-            return None
+            
+            elif 500 <= e.status < 600:
+                # Server errors - retry with exponential backoff
+                if attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt), 60.0)
+                    logger.warning(
+                        f"Discord server error {e.status} on {func.__name__}, retrying after {delay}s "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    if enable_graceful_degradation:
+                        logger.error(f"Discord server errors persist for {func.__name__}, enabling graceful degradation")
+                        raise GracefulDegradationError(
+                            f"Discord API server errors after {max_retries} attempts",
+                            degraded_features=[func.__name__]
+                        )
+                    else:
+                        raise ServiceUnavailableError(
+                            f"Discord API server error {e.status} after {max_retries} attempts: {e}",
+                            service="Discord API"
+                        )
+            
+            elif 400 <= e.status < 500:
+                # Client errors - don't retry
+                logger.error(f"Discord API client error in {func.__name__}: {e}")
+                raise DiscordAPIError(f"Client error {e.status}: {e}", status_code=e.status)
+            
+            else:
+                # Other HTTP exceptions
+                if attempt < max_retries:
+                    delay = min(1.0 * (2 ** attempt), 30.0)
+                    logger.warning(
+                        f"HTTP error on {func.__name__}, retrying after {delay}s "
+                        f"(attempt {attempt + 1}/{max_retries}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    raise DiscordAPIError(f"HTTP error after {max_retries} attempts: {e}")
+        
+        except (discord.ConnectionClosed, discord.GatewayNotFound, 
+                discord.DiscordServerError, ConnectionError, OSError) as e:
+            last_exception = e
+            
+            if attempt < max_retries:
+                delay = min(2.0 * (2 ** attempt), 60.0)
+                logger.warning(
+                    f"Connection error on {func.__name__}, retrying after {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                await asyncio.sleep(delay)
+                continue
+            else:
+                if enable_graceful_degradation:
+                    logger.error(f"Connection errors persist for {func.__name__}, enabling graceful degradation")
+                    raise GracefulDegradationError(
+                        f"Discord connection failed after {max_retries} attempts",
+                        degraded_features=["Discord API"]
+                    )
+                else:
+                    raise ServiceUnavailableError(
+                        f"Discord connection failed after {max_retries} attempts: {e}",
+                        service="Discord API"
+                    )
+        
+        except asyncio.TimeoutError as e:
+            last_exception = e
+            
+            if attempt < max_retries:
+                delay = min(1.0 * (2 ** attempt), 30.0)
+                logger.warning(
+                    f"Timeout on {func.__name__}, retrying after {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+                continue
+            else:
+                if enable_graceful_degradation:
+                    logger.error(f"Timeouts persist for {func.__name__}, enabling graceful degradation")
+                    raise GracefulDegradationError(
+                        f"Discord API timeout after {max_retries} attempts",
+                        degraded_features=[func.__name__]
+                    )
+                else:
+                    raise ServiceUnavailableError(
+                        f"Discord API timeout after {max_retries} attempts",
+                        service="Discord API"
+                    )
+        
+        except Exception as e:
+            # Don't retry unexpected exceptions
+            logger.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
+            raise
     
-    except Exception as e:
-        logger.error(f"Unexpected error in {func.__name__}: {e}", exc_info=True)
-        return None
+    # This should never be reached, but just in case
+    if last_exception:
+        raise ServiceUnavailableError(
+            f"Discord API failed after {max_retries} attempts",
+            service="Discord API"
+        ) from last_exception
+    
+    return None
 
 
 async def get_guild_safely(bot: commands.Bot, guild_id: Union[int, str]) -> Optional[discord.Guild]:

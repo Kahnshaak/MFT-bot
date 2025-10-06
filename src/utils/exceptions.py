@@ -2,7 +2,7 @@
 Custom exception classes and standardized error responses for the Discord Game Night Bot.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from enum import Enum
 
 
@@ -14,31 +14,44 @@ class ErrorCode(Enum):
     VALIDATION_ERROR = "VALIDATION_ERROR"
     PERMISSION_DENIED = "PERMISSION_DENIED"
     RATE_LIMITED = "RATE_LIMITED"
+    SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+    GRACEFUL_DEGRADATION = "GRACEFUL_DEGRADATION"
     
     # Database errors
     DATABASE_CONNECTION_ERROR = "DATABASE_CONNECTION_ERROR"
     DATABASE_OPERATION_ERROR = "DATABASE_OPERATION_ERROR"
     DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
     DUPLICATE_ENTRY = "DUPLICATE_ENTRY"
+    DATA_CORRUPTION = "DATA_CORRUPTION"
+    ORPHANED_DATA = "ORPHANED_DATA"
     
     # Discord API errors
     DISCORD_API_ERROR = "DISCORD_API_ERROR"
     DISCORD_RATE_LIMITED = "DISCORD_RATE_LIMITED"
     DISCORD_FORBIDDEN = "DISCORD_FORBIDDEN"
     DISCORD_NOT_FOUND = "DISCORD_NOT_FOUND"
+    DISCORD_CONNECTION_FAILED = "DISCORD_CONNECTION_FAILED"
+    DISCORD_SERVICE_UNAVAILABLE = "DISCORD_SERVICE_UNAVAILABLE"
     GUILD_NOT_FOUND = "GUILD_NOT_FOUND"
     
     # Event management errors
     EVENT_NOT_FOUND = "EVENT_NOT_FOUND"
     EVENT_INVALID_STATE = "EVENT_INVALID_STATE"
     EVENT_CREATION_FAILED = "EVENT_CREATION_FAILED"
+    EVENT_PARTIAL_FAILURE = "EVENT_PARTIAL_FAILURE"
     POLL_ALREADY_EXISTS = "POLL_ALREADY_EXISTS"
     POLL_NOT_FOUND = "POLL_NOT_FOUND"
     POLL_EXPIRED = "POLL_EXPIRED"
+    POLL_USER_DEPARTED = "POLL_USER_DEPARTED"
+    POLL_DUPLICATE_VOTE = "POLL_DUPLICATE_VOTE"
+    POLL_EDGE_CASE = "POLL_EDGE_CASE"
     
     # User management errors
     USER_NOT_FOUND = "USER_NOT_FOUND"
+    USER_LEFT_SERVER = "USER_LEFT_SERVER"
     INVALID_TIMEZONE = "INVALID_TIMEZONE"
+    DEPRECATED_TIMEZONE = "DEPRECATED_TIMEZONE"
+    TIMEZONE_CONVERSION_ERROR = "TIMEZONE_CONVERSION_ERROR"
     INVALID_GAME_NAME = "INVALID_GAME_NAME"
     
     # Configuration errors
@@ -245,5 +258,90 @@ class ConfigurationError(GameNightBotException):
             error_code=ErrorCode.INVALID_CONFIGURATION,
             details={"config_key": config_key} if config_key else {},
             user_message="Configuration error. Please contact an administrator.",
+            **kwargs
+        )
+
+
+class ServiceUnavailableError(GameNightBotException):
+    """Raised when external services are unavailable."""
+    
+    def __init__(self, message: str, service: Optional[str] = None, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.SERVICE_UNAVAILABLE,
+            details={"service": service} if service else {},
+            user_message="A required service is temporarily unavailable. Please try again later.",
+            **kwargs
+        )
+
+
+class GracefulDegradationError(GameNightBotException):
+    """Raised when system is operating in degraded mode."""
+    
+    def __init__(self, message: str, degraded_features: Optional[List[str]] = None, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.GRACEFUL_DEGRADATION,
+            details={"degraded_features": degraded_features or []},
+            user_message="Some features are temporarily limited. Core functionality remains available.",
+            **kwargs
+        )
+
+
+class TimezoneError(GameNightBotException):
+    """Raised when timezone operations fail."""
+    
+    def __init__(self, message: str, timezone: Optional[str] = None, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.TIMEZONE_CONVERSION_ERROR,
+            details={"timezone": timezone} if timezone else {},
+            user_message="There was an issue with timezone conversion. Please check your timezone settings.",
+            **kwargs
+        )
+
+
+class DeprecatedTimezoneError(TimezoneError):
+    """Raised when using deprecated timezone identifiers."""
+    
+    def __init__(self, message: str, deprecated_tz: str, suggested_tz: Optional[str] = None, **kwargs):
+        # Remove error_code from kwargs to avoid conflict
+        kwargs.pop('error_code', None)
+        super().__init__(
+            message,
+            timezone=deprecated_tz,
+            **kwargs
+        )
+        # Override the error code and details after initialization
+        self.error_code = ErrorCode.DEPRECATED_TIMEZONE
+        self.details.update({
+            "deprecated_timezone": deprecated_tz, 
+            "suggested_timezone": suggested_tz
+        })
+        self.user_message = f"The timezone '{deprecated_tz}' is deprecated. Please use '{suggested_tz}' instead." if suggested_tz else f"The timezone '{deprecated_tz}' is deprecated."
+
+
+class PollEdgeCaseError(PollError):
+    """Raised when poll encounters edge cases."""
+    
+    def __init__(self, message: str, edge_case_type: str, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.POLL_EDGE_CASE,
+            details={"edge_case_type": edge_case_type},
+            user_message="An unusual situation occurred with the poll. It has been handled automatically.",
+            **kwargs
+        )
+
+
+class UserDepartedError(GameNightBotException):
+    """Raised when user leaves server during operations."""
+    
+    def __init__(self, message: str, user_id: str, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.USER_LEFT_SERVER,
+            details={"user_id": user_id},
+            user_message="A user left the server during this operation. The system has been updated accordingly.",
             **kwargs
         )

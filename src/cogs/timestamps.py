@@ -324,11 +324,19 @@ class TimestampsCog(commands.Cog, LoggerMixin):
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             
         except Exception as e:
-            self.logger.error(f"Error in time conversion: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ An error occurred while converting the time.",
-                ephemeral=True
-            )
+            from utils.exceptions import TimezoneError, DeprecatedTimezoneError
+            
+            if isinstance(e, (TimezoneError, DeprecatedTimezoneError)):
+                await interaction.response.send_message(
+                    f"❌ {e.user_message}",
+                    ephemeral=True
+                )
+            else:
+                self.logger.error(f"Error in time conversion: {e}", exc_info=True)
+                await interaction.response.send_message(
+                    "❌ An error occurred while converting the time.",
+                    ephemeral=True
+                )
     
     @commands.slash_command(
         name="time-zone",
@@ -608,35 +616,85 @@ class TimestampsCog(commands.Cog, LoggerMixin):
         return None
     
     async def lookup_timezone(self, timezone_query: str) -> Optional[Dict[str, Any]]:
-        """Look up timezone information."""
+        """Look up timezone information with enhanced error handling."""
+        from utils.exceptions import TimezoneError, DeprecatedTimezoneError
+        
         timezone_query = timezone_query.strip()
         
         # Reject empty queries
         if not timezone_query:
             return None
         
-        # Check aliases first
-        if timezone_query.upper() in self.timezone_aliases:
+        # Check for deprecated timezone identifiers
+        deprecated_timezones = {
+            'EST5EDT': 'America/New_York',
+            'CST6CDT': 'America/Chicago',
+            'MST7MDT': 'America/Denver',
+            'PST8PDT': 'America/Los_Angeles',
+            'US/Eastern': 'America/New_York',
+            'US/Central': 'America/Chicago',
+            'US/Mountain': 'America/Denver',
+            'US/Pacific': 'America/Los_Angeles',
+        }
+        
+        if timezone_query in deprecated_timezones:
+            suggested_tz = deprecated_timezones[timezone_query]
+            self.logger.warning(
+                "Deprecated timezone used",
+                deprecated=timezone_query,
+                suggested=suggested_tz
+            )
+            # Still process it but log the deprecation
+            timezone_name = suggested_tz
+        elif timezone_query.upper() in self.timezone_aliases:
             timezone_name = self.timezone_aliases[timezone_query.upper()]
         else:
             timezone_name = timezone_query
         
-        # Validate timezone
+        # Validate timezone with enhanced error handling
         try:
             tz = ZoneInfo(timezone_name)
             now = datetime.now(tz)
             
-            return {
+            # Check if this is a deprecated timezone that still works
+            is_deprecated = timezone_query in deprecated_timezones
+            
+            result = {
                 'name': timezone_name,
                 'abbreviation': now.strftime('%Z'),
                 'offset': now.strftime('%z'),
                 'current_time': now,
                 'is_dst': bool(now.dst()),
-                'query': timezone_query
+                'query': timezone_query,
+                'is_deprecated': is_deprecated
             }
-        except Exception:
-            # Try fuzzy matching
-            return self._fuzzy_match_timezone(timezone_query)
+            
+            if is_deprecated:
+                result['deprecation_warning'] = f"'{timezone_query}' is deprecated. Use '{timezone_name}' instead."
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(
+                "Timezone lookup failed",
+                query=timezone_query,
+                error=str(e)
+            )
+            
+            # Try fuzzy matching with error context
+            try:
+                fuzzy_result = self._fuzzy_match_timezone(timezone_query)
+                if fuzzy_result:
+                    fuzzy_result['fuzzy_matched'] = True
+                    fuzzy_result['original_query'] = timezone_query
+                return fuzzy_result
+            except Exception as fuzzy_error:
+                self.logger.error(
+                    "Fuzzy timezone matching failed",
+                    query=timezone_query,
+                    error=str(fuzzy_error)
+                )
+                return None
     
     def _fuzzy_match_timezone(self, query: str) -> Optional[Dict[str, Any]]:
         """Attempt fuzzy matching for timezone names."""
