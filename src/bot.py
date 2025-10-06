@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import signal
+import time
 from typing import Optional
 
 import discord
@@ -24,6 +25,10 @@ from core.validation_manager import ValidationManager
 from core.audit_logger import AuditLogger
 from core.discord_events_manager import DiscordEventsManager
 from core.startup_validator import StartupValidator, ValidationError
+from core.recovery_manager import RecoveryManager
+from core.database_recovery import DatabaseRecoveryManager
+from core.state_manager import SystemStateManager
+from core.consistency_checker import DataConsistencyChecker
 from database.manager import DatabaseManager
 from database.migrations import initialize_database
 from utils.logging_config import setup_logging
@@ -57,6 +62,12 @@ class GameNightBot(commands.Bot):
         self.audit_logger: Optional[AuditLogger] = None
         self.discord_events: Optional[DiscordEventsManager] = None
         
+        # Enhanced error handling and recovery components
+        self.recovery_manager: Optional[RecoveryManager] = None
+        self.database_recovery: Optional[DatabaseRecoveryManager] = None
+        self.state_manager: Optional[SystemStateManager] = None
+        self.consistency_checker: Optional[DataConsistencyChecker] = None
+        
         # Set up logging
         self.logger = logging.getLogger(__name__)
     
@@ -81,6 +92,27 @@ class GameNightBot(commands.Bot):
             self.audit_logger = AuditLogger(self.database)
             self.health_monitor = HealthMonitor(self.database, self)
             self.discord_events = DiscordEventsManager(self, self.event_bus, self.database)
+            
+            # Initialize enhanced error handling and recovery systems
+            self.recovery_manager = RecoveryManager(self.database, self.event_bus)
+            self.database_recovery = DatabaseRecoveryManager(self.database)
+            self.state_manager = SystemStateManager(self.database, self.event_bus)
+            self.consistency_checker = DataConsistencyChecker(self.database, self.event_bus)
+            
+            # Register consistency checkers with recovery manager
+            self.recovery_manager.register_consistency_checker(
+                self.consistency_checker.run_full_consistency_check
+            )
+            
+            # Start recovery monitoring
+            await self.database_recovery.start_recovery_monitoring()
+            await self.state_manager.start_state_management()
+            
+            # Emit system startup event
+            await self.event_bus.emit(
+                self.event_bus.EventType.SYSTEM_STARTUP,
+                {"timestamp": self.event_bus.Event.timestamp}
+            )
             
             # Set up event bus middleware for metrics and audit logging
             self.event_bus.add_middleware(self._metrics_middleware)
@@ -119,9 +151,32 @@ class GameNightBot(commands.Bot):
         # Start health monitoring
         if self.health_monitor:
             await self.health_monitor.start_monitoring()
+        
+        # Run initial consistency check
+        if self.consistency_checker:
+            try:
+                issues = await self.consistency_checker.run_full_consistency_check()
+                if issues:
+                    self.logger.warning(
+                        f"Found {len(issues)} consistency issues on startup"
+                    )
+                    
+                    # Auto-repair critical issues
+                    critical_issues = [i for i in issues if i.severity.value == "CRITICAL"]
+                    if critical_issues:
+                        repair_results = await self.consistency_checker.auto_repair_issues(
+                            critical_issues, max_repairs=50
+                        )
+                        self.logger.info(
+                            f"Auto-repaired {repair_results['successful']} critical issues"
+                        )
+                else:
+                    self.logger.info("No consistency issues found on startup")
+            except Exception as e:
+                self.logger.error(f"Failed to run startup consistency check: {e}")
     
     async def on_error(self, event, *args, **kwargs):
-        """Global error handler."""
+        """Global error handler with enhanced recovery."""
         self.logger.error(f"Error in event {event}", exc_info=True)
         if self.metrics:
             await self.metrics.record_error(event)
@@ -133,6 +188,18 @@ class GameNightBot(commands.Bot):
                 action=f"Unhandled error in {event}",
                 severity="medium",
                 details={"event": event, "args": str(args)[:500]}
+            )
+        
+        # Emit error event for recovery system
+        if self.event_bus:
+            await self.event_bus.emit(
+                self.event_bus.EventType.ERROR_OCCURRED,
+                {
+                    "event_name": event,
+                    "error_type": "global_error",
+                    "args": str(args)[:500],
+                    "kwargs": str(kwargs)[:500]
+                }
             )
     
     async def _metrics_middleware(self, event):
@@ -414,6 +481,22 @@ async def shutdown_bot(bot: Optional[GameNightBot]) -> None:
     if bot:
         try:
             logger.info("Shutting down bot...")
+            
+            # Emit system shutdown event
+            if hasattr(bot, 'event_bus') and bot.event_bus:
+                await bot.event_bus.emit(
+                    bot.event_bus.EventType.SYSTEM_SHUTDOWN,
+                    {"timestamp": time.time()}
+                )
+            
+            # Stop enhanced recovery systems
+            if hasattr(bot, 'database_recovery') and bot.database_recovery:
+                await bot.database_recovery.stop_recovery_monitoring()
+                logger.info("Database recovery monitoring stopped")
+            
+            if hasattr(bot, 'state_manager') and bot.state_manager:
+                await bot.state_manager.stop_state_management()
+                logger.info("State management stopped")
             
             # Stop health monitoring
             if hasattr(bot, 'health_monitor') and bot.health_monitor:

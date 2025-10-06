@@ -14,6 +14,10 @@ from core.security_manager import Permission, SecurityManager
 from core.audit_logger import AuditLogger, AuditEventType
 from core.permission_decorators import require_permission, rate_limit
 from core.health_monitor import HealthMonitor, HealthStatus
+from core.recovery_manager import RecoveryManager
+from core.database_recovery import DatabaseRecoveryManager
+from core.state_manager import SystemStateManager
+from core.consistency_checker import DataConsistencyChecker, SeverityLevel
 from models.guild import GuildConfig, PermissionLevel, NotificationChannelType, RoleMapping
 from database.manager import DatabaseManager
 from utils.logging_config import get_logger, LoggerMixin
@@ -29,6 +33,12 @@ class AdminCog(commands.Cog, LoggerMixin):
         self.security: SecurityManager = bot.security
         self.audit_logger: AuditLogger = bot.audit_logger
         self.health_monitor: HealthMonitor = bot.health_monitor
+        
+        # Enhanced recovery systems
+        self.recovery_manager: RecoveryManager = getattr(bot, 'recovery_manager', None)
+        self.database_recovery: DatabaseRecoveryManager = getattr(bot, 'database_recovery', None)
+        self.state_manager: SystemStateManager = getattr(bot, 'state_manager', None)
+        self.consistency_checker: DataConsistencyChecker = getattr(bot, 'consistency_checker', None)
         
         # Maintenance mode tracking
         self._maintenance_guilds: set = set()
@@ -1570,6 +1580,439 @@ class HealthView(discord.ui.View):
         health_summary = self.cog.health_monitor.get_health_summary()
         embed = await self.cog._create_health_summary_embed(health_summary)
         await ctx.response.edit_message(embed=embed, view=self)
+
+
+    @discord.slash_command(
+        name="recovery",
+        description="System recovery and error handling management"
+    )
+    @require_permission(Permission.CONFIGURE_BOT)
+    @rate_limit(max_requests=5, window_seconds=300, per_user=True)
+    async def recovery_command(
+        self,
+        ctx: discord.ApplicationContext,
+        action: discord.Option(
+            str,
+            description="Recovery action to perform",
+            choices=[
+                discord.OptionChoice(name="status", value="status"),
+                discord.OptionChoice(name="check", value="check"),
+                discord.OptionChoice(name="repair", value="repair"),
+                discord.OptionChoice(name="queue", value="queue"),
+                discord.OptionChoice(name="state", value="state"),
+                discord.OptionChoice(name="errors", value="errors")
+            ]
+        ),
+        target: discord.Option(
+            str,
+            description="Specific target or filter",
+            required=False,
+            default=None
+        ) = None
+    ):
+        """System recovery and error handling management."""
+        await ctx.defer(ephemeral=True)
+        
+        try:
+            if action == "status":
+                await self._handle_recovery_status(ctx)
+            elif action == "check":
+                await self._handle_consistency_check(ctx, target)
+            elif action == "repair":
+                await self._handle_auto_repair(ctx, target)
+            elif action == "queue":
+                await self._handle_operation_queue(ctx, target)
+            elif action == "state":
+                await self._handle_state_management(ctx, target)
+            elif action == "errors":
+                await self._handle_error_statistics(ctx, target)
+            else:
+                await ctx.followup.send("❌ Unknown recovery action.", ephemeral=True)
+                
+        except Exception as e:
+            self.logger.error(f"Error in recovery command: {e}", exc_info=True)
+            await ctx.followup.send(
+                "❌ An error occurred while executing the recovery command.",
+                ephemeral=True
+            )
+    
+    async def _handle_recovery_status(self, ctx: discord.ApplicationContext) -> None:
+        """Show overall recovery system status."""
+        embed = discord.Embed(
+            title="🔧 Recovery System Status",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        # Database recovery status
+        if self.database_recovery:
+            db_status = "🟢 Active" if self.database_recovery._recovery_active else "🔴 Inactive"
+            queue_size = len(self.database_recovery._operation_queue)
+            failed_ops = len(self.database_recovery._failed_operations)
+            
+            embed.add_field(
+                name="Database Recovery",
+                value=f"Status: {db_status}\nQueued Operations: {queue_size}\nFailed Operations: {failed_ops}",
+                inline=True
+            )
+        
+        # State management status
+        if self.state_manager:
+            state_summary = await self.state_manager.get_state_summary()
+            embed.add_field(
+                name="State Management",
+                value=f"Snapshots: {state_summary['total_snapshots']}\nExpired: {state_summary['expired_count']}",
+                inline=True
+            )
+        
+        # Health monitoring status
+        if self.health_monitor:
+            overall_health = self.health_monitor.get_overall_health()
+            health_color = {
+                HealthStatus.HEALTHY: "🟢",
+                HealthStatus.DEGRADED: "🟡",
+                HealthStatus.UNHEALTHY: "🔴",
+                HealthStatus.UNKNOWN: "⚪"
+            }.get(overall_health, "⚪")
+            
+            embed.add_field(
+                name="System Health",
+                value=f"Status: {health_color} {overall_health.value.title()}",
+                inline=True
+            )
+        
+        await ctx.followup.send(embed=embed, ephemeral=True)
+    
+    async def _handle_consistency_check(
+        self, 
+        ctx: discord.ApplicationContext,
+        target: Optional[str]
+    ) -> None:
+        """Run data consistency checks."""
+        if not self.consistency_checker:
+            await ctx.followup.send("❌ Consistency checker not available.", ephemeral=True)
+            return
+        
+        await ctx.followup.send("🔍 Running consistency check...", ephemeral=True)
+        
+        try:
+            if target and target != "all":
+                # Run check for specific collection
+                issues = await self.consistency_checker.run_collection_check(target)
+            else:
+                # Run full consistency check
+                issues = await self.consistency_checker.run_full_consistency_check()
+            
+            if not issues:
+                embed = discord.Embed(
+                    title="✅ Consistency Check Complete",
+                    description="No consistency issues found.",
+                    color=discord.Color.green()
+                )
+            else:
+                # Categorize issues by severity
+                critical = len([i for i in issues if i.severity == SeverityLevel.CRITICAL])
+                high = len([i for i in issues if i.severity == SeverityLevel.HIGH])
+                medium = len([i for i in issues if i.severity == SeverityLevel.MEDIUM])
+                low = len([i for i in issues if i.severity == SeverityLevel.LOW])
+                
+                embed = discord.Embed(
+                    title="⚠️ Consistency Issues Found",
+                    description=f"Found {len(issues)} total issues",
+                    color=discord.Color.orange() if critical == 0 else discord.Color.red()
+                )
+                
+                embed.add_field(
+                    name="Issue Breakdown",
+                    value=f"🔴 Critical: {critical}\n🟠 High: {high}\n🟡 Medium: {medium}\n🟢 Low: {low}",
+                    inline=True
+                )
+                
+                # Show auto-repairable count
+                auto_repairable = len([i for i in issues if i.auto_repairable])
+                embed.add_field(
+                    name="Auto-Repairable",
+                    value=f"{auto_repairable} issues can be automatically repaired",
+                    inline=True
+                )
+                
+                # Show top issue types
+                issue_types = {}
+                for issue in issues[:10]:  # Top 10
+                    issue_type = issue.issue_type.value
+                    issue_types[issue_type] = issue_types.get(issue_type, 0) + 1
+                
+                if issue_types:
+                    top_issues = "\n".join([
+                        f"• {issue_type}: {count}"
+                        for issue_type, count in sorted(issue_types.items(), key=lambda x: x[1], reverse=True)[:5]
+                    ])
+                    embed.add_field(
+                        name="Top Issue Types",
+                        value=top_issues,
+                        inline=False
+                    )
+            
+            await ctx.edit(embed=embed)
+            
+        except Exception as e:
+            self.logger.error(f"Error running consistency check: {e}", exc_info=True)
+            await ctx.edit(content="❌ Failed to run consistency check.")
+    
+    async def _handle_auto_repair(
+        self, 
+        ctx: discord.ApplicationContext,
+        target: Optional[str]
+    ) -> None:
+        """Run automatic repair of consistency issues."""
+        if not self.consistency_checker:
+            await ctx.followup.send("❌ Consistency checker not available.", ephemeral=True)
+            return
+        
+        await ctx.followup.send("🔧 Running consistency check and auto-repair...", ephemeral=True)
+        
+        try:
+            # First run consistency check
+            issues = await self.consistency_checker.run_full_consistency_check()
+            
+            if not issues:
+                await ctx.edit(content="✅ No consistency issues found to repair.")
+                return
+            
+            # Filter issues based on target
+            if target == "critical":
+                issues = [i for i in issues if i.severity == SeverityLevel.CRITICAL]
+            elif target == "high":
+                issues = [i for i in issues if i.severity in [SeverityLevel.CRITICAL, SeverityLevel.HIGH]]
+            
+            # Run auto-repair
+            max_repairs = 50 if target != "all" else 100
+            repair_results = await self.consistency_checker.auto_repair_issues(issues, max_repairs)
+            
+            embed = discord.Embed(
+                title="🔧 Auto-Repair Complete",
+                color=discord.Color.green() if repair_results["failed"] == 0 else discord.Color.orange()
+            )
+            
+            embed.add_field(
+                name="Repair Results",
+                value=f"✅ Successful: {repair_results['successful']}\n❌ Failed: {repair_results['failed']}\n⏭️ Skipped: {repair_results['skipped']}",
+                inline=True
+            )
+            
+            if repair_results["failed"] > 0:
+                embed.add_field(
+                    name="Note",
+                    value="Some issues could not be automatically repaired and may require manual intervention.",
+                    inline=False
+                )
+            
+            await ctx.edit(embed=embed)
+            
+        except Exception as e:
+            self.logger.error(f"Error running auto-repair: {e}", exc_info=True)
+            await ctx.edit(content="❌ Failed to run auto-repair.")
+    
+    async def _handle_operation_queue(
+        self, 
+        ctx: discord.ApplicationContext,
+        target: Optional[str]
+    ) -> None:
+        """Manage database operation queue."""
+        if not self.database_recovery:
+            await ctx.followup.send("❌ Database recovery not available.", ephemeral=True)
+            return
+        
+        if target == "process":
+            await ctx.followup.send("⚙️ Processing queued operations...", ephemeral=True)
+            
+            try:
+                processed = await self.database_recovery.process_queued_operations()
+                await ctx.edit(content=f"✅ Processed {processed} queued operations.")
+            except Exception as e:
+                self.logger.error(f"Error processing queue: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to process queued operations.")
+        
+        elif target == "retry":
+            await ctx.followup.send("🔄 Retrying failed operations...", ephemeral=True)
+            
+            try:
+                retried = await self.database_recovery.retry_failed_operations()
+                await ctx.edit(content=f"✅ Re-queued {retried} failed operations for retry.")
+            except Exception as e:
+                self.logger.error(f"Error retrying operations: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to retry operations.")
+        
+        elif target == "cleanup":
+            await ctx.followup.send("🧹 Cleaning up old operations...", ephemeral=True)
+            
+            try:
+                cleaned = await self.database_recovery.cleanup_old_operations()
+                await ctx.edit(content=f"✅ Cleaned up {cleaned} old operations.")
+            except Exception as e:
+                self.logger.error(f"Error cleaning up operations: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to cleanup operations.")
+        
+        else:
+            # Show queue status
+            queue_size = len(self.database_recovery._operation_queue)
+            failed_ops = len(self.database_recovery._failed_operations)
+            
+            embed = discord.Embed(
+                title="📋 Operation Queue Status",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="Queue Statistics",
+                value=f"Queued: {queue_size}\nFailed: {failed_ops}",
+                inline=True
+            )
+            
+            if queue_size > 0:
+                embed.add_field(
+                    name="Actions Available",
+                    value="Use `/recovery queue process` to process queue\nUse `/recovery queue retry` to retry failed operations\nUse `/recovery queue cleanup` to clean old operations",
+                    inline=False
+                )
+            
+            await ctx.followup.send(embed=embed, ephemeral=True)
+    
+    async def _handle_state_management(
+        self, 
+        ctx: discord.ApplicationContext,
+        target: Optional[str]
+    ) -> None:
+        """Manage system state snapshots."""
+        if not self.state_manager:
+            await ctx.followup.send("❌ State manager not available.", ephemeral=True)
+            return
+        
+        if target == "save":
+            await ctx.followup.send("💾 Saving system state...", ephemeral=True)
+            
+            try:
+                await self.state_manager.save_all_state()
+                await ctx.edit(content="✅ System state saved successfully.")
+            except Exception as e:
+                self.logger.error(f"Error saving state: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to save system state.")
+        
+        elif target == "restore":
+            await ctx.followup.send("📥 Restoring system state...", ephemeral=True)
+            
+            try:
+                await self.state_manager.restore_all_state()
+                await ctx.edit(content="✅ System state restored successfully.")
+            except Exception as e:
+                self.logger.error(f"Error restoring state: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to restore system state.")
+        
+        elif target == "cleanup":
+            await ctx.followup.send("🧹 Cleaning up expired state...", ephemeral=True)
+            
+            try:
+                cleaned = await self.state_manager.cleanup_expired_state()
+                await ctx.edit(content=f"✅ Cleaned up {cleaned} expired state snapshots.")
+            except Exception as e:
+                self.logger.error(f"Error cleaning up state: {e}", exc_info=True)
+                await ctx.edit(content="❌ Failed to cleanup expired state.")
+        
+        else:
+            # Show state summary
+            try:
+                summary = await self.state_manager.get_state_summary()
+                
+                embed = discord.Embed(
+                    title="💾 State Management Status",
+                    color=discord.Color.blue()
+                )
+                
+                embed.add_field(
+                    name="Snapshots",
+                    value=f"Total: {summary['total_snapshots']}\nExpired: {summary['expired_count']}",
+                    inline=True
+                )
+                
+                if summary['by_type']:
+                    type_breakdown = "\n".join([
+                        f"• {state_type}: {count}"
+                        for state_type, count in summary['by_type'].items()
+                    ])
+                    embed.add_field(
+                        name="By Type",
+                        value=type_breakdown,
+                        inline=True
+                    )
+                
+                embed.add_field(
+                    name="Actions Available",
+                    value="Use `/recovery state save` to save current state\nUse `/recovery state restore` to restore state\nUse `/recovery state cleanup` to clean expired snapshots",
+                    inline=False
+                )
+                
+                await ctx.followup.send(embed=embed, ephemeral=True)
+                
+            except Exception as e:
+                self.logger.error(f"Error getting state summary: {e}", exc_info=True)
+                await ctx.followup.send("❌ Failed to get state summary.", ephemeral=True)
+    
+    async def _handle_error_statistics(
+        self, 
+        ctx: discord.ApplicationContext,
+        target: Optional[str]
+    ) -> None:
+        """Show error statistics and recovery information."""
+        embed = discord.Embed(
+            title="📊 Error Statistics",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        # Get error statistics from enhanced error handler if available
+        error_handler = getattr(self.bot, 'enhanced_error_handler', None)
+        if error_handler and hasattr(error_handler, 'get_error_statistics'):
+            try:
+                stats = error_handler.get_error_statistics()
+                
+                embed.add_field(
+                    name="Total Errors",
+                    value=str(stats.get('total_errors', 0)),
+                    inline=True
+                )
+                
+                # Show top error types
+                error_types = stats.get('error_types', {})
+                if error_types:
+                    top_errors = sorted(error_types.items(), key=lambda x: x[1], reverse=True)[:5]
+                    error_list = "\n".join([f"• {error}: {count}" for error, count in top_errors])
+                    embed.add_field(
+                        name="Top Error Types",
+                        value=error_list,
+                        inline=True
+                    )
+                
+            except Exception as e:
+                self.logger.error(f"Error getting error statistics: {e}", exc_info=True)
+                embed.add_field(
+                    name="Error",
+                    value="Failed to retrieve error statistics",
+                    inline=False
+                )
+        
+        # Get recovery statistics
+        if self.recovery_manager:
+            try:
+                # This would require adding a get_statistics method to RecoveryManager
+                embed.add_field(
+                    name="Recovery System",
+                    value="Recovery manager active",
+                    inline=True
+                )
+            except Exception as e:
+                self.logger.error(f"Error getting recovery statistics: {e}", exc_info=True)
+        
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
