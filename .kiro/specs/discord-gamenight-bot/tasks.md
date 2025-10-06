@@ -123,7 +123,7 @@
   - Add server health monitoring and diagnostic commands for troubleshooting
   - _Requirements: 6.1, 6.3, 6.5, 9.6_
 
-- [-] 14. Create recurring events automation system
+- [x] 14. Create recurring events automation system
   - Build Recurring cog with schedule configuration commands (/recurring create, /recurring list, /recurring manage)
   - Implement cron-like scheduling with monthly and weekly patterns and timezone support
   - Create template-based event generation with variable substitution and dynamic content
@@ -134,7 +134,7 @@
   - Create background task system for processing scheduled events automatically
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 15. Enhance error handling and recovery systems
+- [-] 15. Enhance error handling and recovery systems
   - Extend existing error handling with advanced recovery mechanisms for complex failure scenarios
   - Implement database connectivity recovery with operation queuing and transaction rollback
   - Create event creation failure recovery with manual intervention options and state preservation

@@ -216,8 +216,9 @@ class DatabaseManager(LoggerMixin):
             
             # Recurring schedules indexes
             recurring_indexes = [
-                IndexModel([("guild_id", 1), ("status.is_active", 1)]),
-                IndexModel([("status.next_trigger", 1)])
+                IndexModel([("guild_id", 1), ("status", 1)]),
+                IndexModel([("next_trigger", 1)]),
+                IndexModel([("creator_id", 1), ("created_at", -1)])
             ]
             await self.database.recurring_schedules.create_indexes(recurring_indexes)
             

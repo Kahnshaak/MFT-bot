@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any
 from pydantic import Field, field_validator
 
-from .base import BaseDocument, ValidationMixin, TimestampMixin
+from .base import BaseDocument, ValidationMixin, TimestampMixin, PyObjectId
 
 
 class TriggerType(str, Enum):
@@ -343,10 +343,17 @@ class RecurringSchedule(BaseDocument, ValidationMixin, TimestampMixin):
         if current_time is None:
             current_time = TimestampMixin.utc_now()
         
+        # Ensure both datetimes are timezone-aware for comparison
+        if self.next_trigger is None:
+            return False
+        
+        # Convert to UTC if needed
+        next_trigger_utc = TimestampMixin.to_utc(self.next_trigger)
+        current_time_utc = TimestampMixin.to_utc(current_time)
+        
         return (
             self.status == ScheduleStatus.ACTIVE and
-            self.next_trigger is not None and
-            current_time >= self.next_trigger and
+            current_time_utc >= next_trigger_utc and
             (self.max_executions is None or self.execution_count < self.max_executions)
         )
     

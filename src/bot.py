@@ -93,7 +93,8 @@ class GameNightBot(commands.Bot):
                 'cogs.games',
                 'cogs.notifications',
                 'cogs.timestamps',
-                'cogs.admin'
+                'cogs.admin',
+                'cogs.recurring'
             ]
             
             for cog in cogs_to_load:
