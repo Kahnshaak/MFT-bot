@@ -123,6 +123,118 @@ async def health_check():
         }
 
 
+@app.get("/api/monitoring/dashboard")
+async def get_monitoring_dashboard():
+    """Get comprehensive monitoring dashboard data."""
+    try:
+        # This would integrate with the bot's monitoring systems
+        # For now, return basic structure
+        return {
+            "success": True,
+            "data": {
+                "overall_status": "healthy",
+                "components": [],
+                "metrics_summary": {},
+                "performance_summary": {},
+                "active_alerts": [],
+                "system_info": {},
+                "last_updated": datetime.utcnow().isoformat()
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Monitoring dashboard error: {str(e)}")
+
+
+@app.get("/api/monitoring/metrics")
+async def get_metrics():
+    """Get system metrics."""
+    try:
+        # This would integrate with the bot's metrics collector
+        return {
+            "success": True,
+            "data": {
+                "system_stats": {
+                    "uptime_seconds": 0,
+                    "total_commands": 0,
+                    "total_errors": 0
+                },
+                "command_summary": {
+                    "total_commands": 0,
+                    "total_errors": 0,
+                    "avg_success_rate": 1.0,
+                    "unique_commands": 0
+                },
+                "top_commands": []
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Metrics error: {str(e)}")
+
+
+@app.get("/api/monitoring/performance")
+async def get_performance():
+    """Get performance statistics."""
+    try:
+        # This would integrate with the bot's performance monitor
+        return {
+            "success": True,
+            "data": {
+                "total_operations": 0,
+                "avg_response_time_ms": 0,
+                "operations_by_threshold": {},
+                "slowest_operations": [],
+                "trending_operations": {}
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Performance error: {str(e)}")
+
+
+@app.get("/api/monitoring/alerts")
+async def get_alerts():
+    """Get active alerts."""
+    try:
+        # This would integrate with the bot's alerting system
+        return {
+            "success": True,
+            "data": [],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Alerts error: {str(e)}")
+
+
+@app.get("/api/monitoring/logs")
+async def get_logs(
+    hours: int = 1,
+    level: Optional[str] = None,
+    query: Optional[str] = None,
+    limit: int = 100
+):
+    """Get and search logs."""
+    try:
+        # This would integrate with the bot's log aggregator
+        return {
+            "success": True,
+            "data": {
+                "entries": [],
+                "total_count": 0,
+                "analysis": {
+                    "total_entries": 0,
+                    "entries_by_level": {},
+                    "top_loggers": [],
+                    "error_patterns": []
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Logs error: {str(e)}")
+
+
 @app.get("/api/stats")
 async def get_stats():
     """Get dashboard statistics."""
@@ -190,6 +302,18 @@ async def users_page(request: Request):
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Users page error: {str(e)}")
+
+
+@app.get("/monitoring", response_class=HTMLResponse)
+async def monitoring_page(request: Request):
+    """System monitoring page."""
+    try:
+        return templates.TemplateResponse("monitoring.html", {
+            "request": request,
+            "title": "Monitoring - Game Night Bot Dashboard"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Monitoring page error: {str(e)}")
 
 
 async def get_dashboard_stats() -> Dict[str, Any]:

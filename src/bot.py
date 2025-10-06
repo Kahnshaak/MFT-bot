@@ -29,6 +29,10 @@ from core.recovery_manager import RecoveryManager
 from core.database_recovery import DatabaseRecoveryManager
 from core.state_manager import SystemStateManager
 from core.consistency_checker import DataConsistencyChecker
+from core.alerting_system import AlertingSystem, DiscordAlertChannel, LogAlertChannel
+from core.performance_monitor import PerformanceMonitor
+from core.system_status_dashboard import SystemStatusDashboard
+from core.log_aggregator import LogAggregator
 from database.manager import DatabaseManager
 from database.migrations import initialize_database
 from utils.logging_config import setup_logging
@@ -68,6 +72,12 @@ class GameNightBot(commands.Bot):
         self.state_manager: Optional[SystemStateManager] = None
         self.consistency_checker: Optional[DataConsistencyChecker] = None
         
+        # Monitoring and alerting components
+        self.alerting_system: Optional[AlertingSystem] = None
+        self.performance_monitor: Optional[PerformanceMonitor] = None
+        self.system_dashboard: Optional[SystemStatusDashboard] = None
+        self.log_aggregator: Optional[LogAggregator] = None
+        
         # Set up logging
         self.logger = logging.getLogger(__name__)
     
@@ -99,6 +109,24 @@ class GameNightBot(commands.Bot):
             self.state_manager = SystemStateManager(self.database, self.event_bus)
             self.consistency_checker = DataConsistencyChecker(self.database, self.event_bus)
             
+            # Initialize monitoring and alerting systems
+            self.alerting_system = AlertingSystem(self.database)
+            self.performance_monitor = PerformanceMonitor(self.metrics)
+            self.log_aggregator = LogAggregator(database_manager=self.database)
+            
+            # Set up alerting channels
+            log_channel = LogAlertChannel()
+            self.alerting_system.add_channel(log_channel)
+            
+            # Initialize system dashboard
+            self.system_dashboard = SystemStatusDashboard(
+                self.health_monitor,
+                self.metrics,
+                self.performance_monitor,
+                self.alerting_system,
+                self.database
+            )
+            
             # Register consistency checkers with recovery manager
             self.recovery_manager.register_consistency_checker(
                 self.consistency_checker.run_full_consistency_check
@@ -126,7 +154,8 @@ class GameNightBot(commands.Bot):
                 'cogs.notifications',
                 'cogs.timestamps',
                 'cogs.admin',
-                'cogs.recurring'
+                'cogs.recurring',
+                'cogs.monitoring'
             ]
             
             for cog in cogs_to_load:
@@ -151,6 +180,27 @@ class GameNightBot(commands.Bot):
         # Start health monitoring
         if self.health_monitor:
             await self.health_monitor.start_monitoring()
+            
+            # Set up health monitoring alerts
+            self.health_monitor.register_alert_callback(self._handle_health_alert)
+        
+        # Start system dashboard
+        if self.system_dashboard:
+            await self.system_dashboard.start_auto_refresh(30)  # 30 second refresh
+        
+        # Set up Discord alert channel if admin channel is configured
+        admin_channel_id = self.settings.get('ADMIN_CHANNEL_ID')
+        if admin_channel_id and self.alerting_system:
+            try:
+                discord_channel = DiscordAlertChannel(
+                    self, 
+                    int(admin_channel_id),
+                    mention_roles=self.settings.get('ADMIN_ROLE_IDS', [])
+                )
+                self.alerting_system.add_channel(discord_channel)
+                self.logger.info(f"Added Discord alert channel: {admin_channel_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to set up Discord alert channel: {e}")
         
         # Run initial consistency check
         if self.consistency_checker:
@@ -246,18 +296,44 @@ class GameNightBot(commands.Bot):
                 )
         return event
     
+    async def _handle_health_alert(self, health_check):
+        """Handle health monitoring alerts."""
+        if self.alerting_system and health_check.status.value in ['unhealthy', 'degraded']:
+            from core.alerting_system import AlertType, AlertSeverity
+            
+            severity = AlertSeverity.HIGH if health_check.status.value == 'unhealthy' else AlertSeverity.MEDIUM
+            
+            await self.alerting_system.send_alert(
+                alert_type=AlertType.HEALTH_CHECK_FAILED,
+                severity=severity,
+                title=f"Health Check Alert: {health_check.name}",
+                message=health_check.message,
+                source="health_monitor",
+                details=health_check.details or {}
+            )
+    
     async def on_command_error(self, ctx, error):
         """Handle command errors with proper logging and metrics."""
         command_name = ctx.command.name if ctx.command else "unknown"
+        start_time = getattr(ctx, '_command_start_time', time.time())
+        duration = time.time() - start_time
         
         # Record metrics
         if self.metrics:
             await self.metrics.record_command(
                 command_name=command_name,
-                duration=0,  # Error occurred, no meaningful duration
+                duration=duration,
                 success=False,
                 guild_id=str(ctx.guild.id) if ctx.guild else None,
                 user_id=str(ctx.author.id)
+            )
+        
+        # Record performance metrics
+        if self.performance_monitor:
+            await self.performance_monitor.record_operation(
+                f"command_{command_name}",
+                duration * 1000,  # Convert to milliseconds
+                {"success": False, "error_type": type(error).__name__}
             )
         
         # Log to audit system
@@ -320,15 +396,25 @@ class GameNightBot(commands.Bot):
     async def on_application_command_error(self, interaction, error):
         """Handle application command (slash command) errors."""
         command_name = interaction.command.name if interaction.command else "unknown"
+        start_time = getattr(interaction, '_command_start_time', time.time())
+        duration = time.time() - start_time
         
         # Record metrics
         if self.metrics:
             await self.metrics.record_command(
                 command_name=command_name,
-                duration=0,
+                duration=duration,
                 success=False,
                 guild_id=str(interaction.guild.id) if interaction.guild else None,
                 user_id=str(interaction.user.id)
+            )
+        
+        # Record performance metrics
+        if self.performance_monitor:
+            await self.performance_monitor.record_operation(
+                f"slash_command_{command_name}",
+                duration * 1000,  # Convert to milliseconds
+                {"success": False, "error_type": type(error).__name__}
             )
         
         # Similar error handling as regular commands
@@ -498,9 +584,12 @@ async def shutdown_bot(bot: Optional[GameNightBot]) -> None:
                 await bot.state_manager.stop_state_management()
                 logger.info("State management stopped")
             
-            # Stop health monitoring
+            # Stop monitoring systems
             if hasattr(bot, 'health_monitor') and bot.health_monitor:
                 await bot.health_monitor.stop_monitoring()
+            
+            if hasattr(bot, 'system_dashboard') and bot.system_dashboard:
+                await bot.system_dashboard.stop_auto_refresh()
             
             # Close database connection
             if hasattr(bot, 'database') and bot.database:
