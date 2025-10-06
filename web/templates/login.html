@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Game Night Bot Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Login to Game Night Bot Dashboard</h4>
+                </div>
+                <div class="card-body text-center">
+                    <p class="mb-4">Sign in with your Discord account to access the dashboard.</p>
+                    
+                    <a href="{{ oauth_url }}" class="btn btn-primary btn-lg">
+                        <i class="fab fa-discord me-2"></i>
+                        Login with Discord
+                    </a>
+                    
+                    <div class="mt-4">
+                        <small class="text-muted">
+                            You need administrator or manage server permissions in a server where the bot is installed.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.btn-primary {
+    background-color: #5865F2;
+    border-color: #5865F2;
+}
+
+.btn-primary:hover {
+    background-color: #4752C4;
+    border-color: #4752C4;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: none;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+</style>
+{% endblock %}
