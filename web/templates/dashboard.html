@@ -266,7 +266,55 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-// Auto-refresh stats every 30 seconds
-setInterval(refreshStats, 30000);
+// Real-time status updates
+let statusUpdateInterval;
+let isPageVisible = true;
+
+// Auto-refresh stats every 30 seconds when page is visible
+function startStatusUpdates() {
+    statusUpdateInterval = setInterval(() => {
+        if (isPageVisible) {
+            refreshStats();
+            updateSystemStatus();
+        }
+    }, 30000);
+}
+
+// Stop updates when page is not visible to save resources
+document.addEventListener('visibilitychange', function() {
+    isPageVisible = !document.hidden;
+    if (isPageVisible) {
+        refreshStats();
+        updateSystemStatus();
+    }
+});
+
+async function updateSystemStatus() {
+    try {
+        const response = await fetch('/api/health');
+        const health = await response.json();
+        
+        // Update database status indicator
+        const dbStatus = document.getElementById('db-status');
+        if (dbStatus) {
+            const isHealthy = health.database === 'connected';
+            dbStatus.textContent = isHealthy ? 'Connected' : 'Disconnected';
+            dbStatus.className = `badge bg-${isHealthy ? 'success' : 'danger'}`;
+        }
+        
+        // Add real-time timestamp
+        document.getElementById('last-updated').textContent = new Date().toLocaleString();
+        
+        // Show connection status in title
+        document.title = `Dashboard - Game Night Bot ${health.status === 'healthy' ? '●' : '○'}`;
+        
+    } catch (error) {
+        console.warn('Status update failed:', error);
+        document.title = 'Dashboard - Game Night Bot ○';
+    }
+}
+
+// Start real-time updates
+startStatusUpdates();
 </script>
 {% endblock %}

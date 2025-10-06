@@ -2,6 +2,84 @@
 
 {% block title %}Events - Game Night Bot{% endblock %}
 
+{% block extra_css %}
+<style>
+    .view-toggle {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .calendar-container {
+        background: white;
+        border-radius: 10px;
+        padding: 1rem;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+    .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background: #dee2e6;
+        border-radius: 5px;
+        overflow: hidden;
+    }
+    .calendar-day {
+        background: white;
+        padding: 0.5rem;
+        min-height: 80px;
+        position: relative;
+    }
+    .calendar-day.other-month {
+        background: #f8f9fa;
+        color: #6c757d;
+    }
+    .calendar-day.today {
+        background: #e3f2fd;
+    }
+    .calendar-event {
+        background: #007bff;
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.125rem 0.25rem;
+        border-radius: 3px;
+        margin-bottom: 0.125rem;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .calendar-event.scheduled {
+        background: #28a745;
+    }
+    .calendar-event.polling {
+        background: #ffc107;
+        color: #212529;
+    }
+    .calendar-event.cancelled {
+        background: #dc3545;
+    }
+    .filters-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .event-details-modal .modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
     <h1 class="h2">
@@ -14,67 +92,351 @@
                 <i class="bi bi-arrow-clockwise"></i>
                 Refresh
             </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="exportEvents()">
+                <i class="bi bi-download"></i>
+                Export
+            </button>
         </div>
     </div>
 </div>
 
-<!-- Events Table -->
-<div class="card shadow">
-    <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">
-            <i class="bi bi-list"></i>
-            Recent Events
-        </h6>
+<!-- View Toggle -->
+<div class="view-toggle">
+    <div class="btn-group w-100" role="group">
+        <input type="radio" class="btn-check" name="viewMode" id="calendarView" value="calendar" checked>
+        <label class="btn btn-outline-primary" for="calendarView">
+            <i class="bi bi-calendar3"></i> Calendar View
+        </label>
+        
+        <input type="radio" class="btn-check" name="viewMode" id="listView" value="list">
+        <label class="btn btn-outline-primary" for="listView">
+            <i class="bi bi-list-ul"></i> List View
+        </label>
     </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-bordered" id="eventsTable">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Creator</th>
-                        <th>State</th>
-                        <th>Created</th>
-                        <th>Guild ID</th>
-                    </tr>
-                </thead>
-                <tbody id="eventsTableBody">
-                    <tr>
-                        <td colspan="5" class="text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Loading events...</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+</div>
+
+<!-- Filters Section -->
+<div class="filters-section">
+    <div class="row">
+        <div class="col-md-3">
+            <label for="stateFilter" class="form-label">State</label>
+            <select class="form-select form-select-sm" id="stateFilter" onchange="applyFilters()">
+                <option value="">All States</option>
+                <option value="DRAFT">Draft</option>
+                <option value="DATE_POLLING">Date Polling</option>
+                <option value="TIME_POLLING">Time Polling</option>
+                <option value="GAME_POLLING">Game Polling</option>
+                <option value="SCHEDULED">Scheduled</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="guildFilter" class="form-label">Server</label>
+            <select class="form-select form-select-sm" id="guildFilter" onchange="applyFilters()">
+                <option value="">All Servers</option>
+                <!-- Guild options will be populated by JavaScript -->
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label for="searchFilter" class="form-label">Search</label>
+            <input type="text" class="form-control form-control-sm" id="searchFilter" 
+                   placeholder="Search events..." onkeyup="debounceSearch()">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">&nbsp;</label>
+            <button type="button" class="btn btn-sm btn-outline-secondary w-100" onclick="clearFilters()">
+                <i class="bi bi-x-circle"></i> Clear
+            </button>
         </div>
     </div>
 </div>
 
-<!-- Pagination -->
-<nav aria-label="Events pagination" class="mt-3">
-    <ul class="pagination justify-content-center" id="pagination">
-        <!-- Pagination will be populated by JavaScript -->
-    </ul>
-</nav>
+<!-- Calendar View -->
+<div id="calendarViewContainer" class="calendar-container">
+    <div class="calendar-header">
+        <div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="previousMonth()">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span class="mx-3 fw-bold" id="calendarTitle">Loading...</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="nextMonth()">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" onclick="goToToday()">
+            <i class="bi bi-calendar-check"></i> Today
+        </button>
+    </div>
+    
+    <div class="calendar-grid" id="calendarGrid">
+        <!-- Calendar will be populated by JavaScript -->
+    </div>
+</div>
+
+<!-- List View -->
+<div id="listViewContainer" style="display: none;">
+    <div class="card shadow">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="bi bi-list"></i>
+                Events List
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="eventsTable">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Creator</th>
+                            <th>State</th>
+                            <th>Created</th>
+                            <th>Server</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventsTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading events...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <nav aria-label="Events pagination" class="mt-3">
+        <ul class="pagination justify-content-center" id="pagination">
+            <!-- Pagination will be populated by JavaScript -->
+        </ul>
+    </nav>
+</div>
+
+<!-- Event Details Modal -->
+<div class="modal fade event-details-modal" id="eventDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="eventModalTitle">Event Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="eventModalBody">
+                <!-- Event details will be populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Events</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="exportForm">
+                    <div class="mb-3">
+                        <label for="exportFormat" class="form-label">Format</label>
+                        <select class="form-select" id="exportFormat">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="exportDateRange" class="form-label">Date Range</label>
+                        <select class="form-select" id="exportDateRange">
+                            <option value="">All Time</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="performExport()">
+                    <i class="bi bi-download"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let currentPage = 0;
+let currentView = 'calendar';
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+let searchTimeout = null;
 const eventsPerPage = 20;
+
+// Initialize events page
+document.addEventListener('DOMContentLoaded', function() {
+    initializeEventHandlers();
+    loadCalendarView();
+});
+
+function initializeEventHandlers() {
+    // View mode toggle
+    document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            currentView = this.value;
+            toggleView();
+        });
+    });
+}
+
+function toggleView() {
+    const calendarContainer = document.getElementById('calendarViewContainer');
+    const listContainer = document.getElementById('listViewContainer');
+    
+    if (currentView === 'calendar') {
+        calendarContainer.style.display = 'block';
+        listContainer.style.display = 'none';
+        loadCalendarView();
+    } else {
+        calendarContainer.style.display = 'none';
+        listContainer.style.display = 'block';
+        loadEvents(0);
+    }
+}
+
+async function loadCalendarView() {
+    try {
+        const guildId = document.getElementById('guildFilter').value;
+        const response = await makeAuthenticatedRequest(
+            `/api/events/calendar?month=${currentMonth + 1}&year=${currentYear}${guildId ? `&guild_id=${guildId}` : ''}`
+        );
+        const result = await response.json();
+        
+        if (result.success) {
+            renderCalendar(result.data);
+            updateCalendarTitle();
+        } else {
+            showError('Failed to load calendar');
+        }
+    } catch (error) {
+        console.error('Error loading calendar:', error);
+        showError('Error loading calendar');
+    }
+}
+
+function renderCalendar(events) {
+    const grid = document.getElementById('calendarGrid');
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    // Create day headers
+    const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let calendarHTML = '';
+    
+    dayHeaders.forEach(day => {
+        calendarHTML += `<div class="calendar-day" style="background: #e9ecef; font-weight: bold; text-align: center; padding: 0.5rem;">${day}</div>`;
+    });
+    
+    // Create calendar days
+    const today = new Date();
+    for (let i = 0; i < 42; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        
+        const isCurrentMonth = currentDate.getMonth() === currentMonth;
+        const isToday = currentDate.toDateString() === today.toDateString();
+        
+        let dayClass = 'calendar-day';
+        if (!isCurrentMonth) dayClass += ' other-month';
+        if (isToday) dayClass += ' today';
+        
+        // Find events for this day
+        const dayEvents = events.filter(event => {
+            if (!event.date) return false;
+            const eventDate = new Date(event.date);
+            return eventDate.toDateString() === currentDate.toDateString();
+        });
+        
+        let eventsHTML = '';
+        dayEvents.forEach(event => {
+            const eventClass = `calendar-event ${event.state.toLowerCase()}`;
+            eventsHTML += `<div class="${eventClass}" onclick="showEventDetails('${event.id}')" title="${escapeHtml(event.title)}">${escapeHtml(event.title)}</div>`;
+        });
+        
+        calendarHTML += `
+            <div class="${dayClass}">
+                <div style="font-weight: bold; margin-bottom: 0.25rem;">${currentDate.getDate()}</div>
+                ${eventsHTML}
+            </div>
+        `;
+    }
+    
+    grid.innerHTML = calendarHTML;
+}
+
+function updateCalendarTitle() {
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    document.getElementById('calendarTitle').textContent = `${monthNames[currentMonth]} ${currentYear}`;
+}
+
+function previousMonth() {
+    currentMonth--;
+    if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+    }
+    loadCalendarView();
+}
+
+function nextMonth() {
+    currentMonth++;
+    if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+    }
+    loadCalendarView();
+}
+
+function goToToday() {
+    const today = new Date();
+    currentMonth = today.getMonth();
+    currentYear = today.getFullYear();
+    loadCalendarView();
+}
 
 async function loadEvents(page = 0) {
     try {
         const skip = page * eventsPerPage;
-        const response = await fetch(`/api/events?limit=${eventsPerPage}&skip=${skip}`);
+        const filters = getFilters();
+        const queryParams = new URLSearchParams({
+            limit: eventsPerPage,
+            skip: skip,
+            ...filters
+        });
+        
+        const response = await makeAuthenticatedRequest(`/api/events?${queryParams}`);
         const result = await response.json();
         
         if (result.success) {
             displayEvents(result.data);
-            updatePagination(result.count, page);
+            updatePagination(result.total, page);
         } else {
             showError('Failed to load events');
         }
@@ -84,13 +446,28 @@ async function loadEvents(page = 0) {
     }
 }
 
+function getFilters() {
+    const filters = {};
+    
+    const state = document.getElementById('stateFilter').value;
+    if (state) filters.state = state;
+    
+    const guildId = document.getElementById('guildFilter').value;
+    if (guildId) filters.guild_id = guildId;
+    
+    const search = document.getElementById('searchFilter').value.trim();
+    if (search) filters.search = search;
+    
+    return filters;
+}
+
 function displayEvents(events) {
     const tbody = document.getElementById('eventsTableBody');
     
     if (events.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">
+                <td colspan="6" class="text-center text-muted">
                     <i class="bi bi-calendar-x" style="font-size: 2rem;"></i>
                     <p class="mt-2">No events found</p>
                 </td>
@@ -117,10 +494,120 @@ function displayEvents(events) {
                 <small>${formatDate(event.created_at)}</small>
             </td>
             <td>
-                <code>${event.guild_id}</code>
+                <code>${event.guild_id.substring(0, 8)}...</code>
+            </td>
+            <td>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="showEventDetails('${event._id}')">
+                    <i class="bi bi-eye"></i>
+                </button>
             </td>
         </tr>
     `).join('');
+}
+
+async function showEventDetails(eventId) {
+    try {
+        // In a real implementation, you'd fetch detailed event data
+        const modal = new bootstrap.Modal(document.getElementById('eventDetailsModal'));
+        document.getElementById('eventModalTitle').textContent = 'Event Details';
+        document.getElementById('eventModalBody').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border" role="status"></div>
+                <p class="mt-2">Loading event details...</p>
+            </div>
+        `;
+        modal.show();
+        
+        // Simulate loading event details
+        setTimeout(() => {
+            document.getElementById('eventModalBody').innerHTML = `
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Event details functionality will be implemented in a future update.
+                    Event ID: ${eventId}
+                </div>
+            `;
+        }, 1000);
+    } catch (error) {
+        console.error('Error loading event details:', error);
+        showToast('Error loading event details', 'error');
+    }
+}
+
+function applyFilters() {
+    if (currentView === 'calendar') {
+        loadCalendarView();
+    } else {
+        currentPage = 0;
+        loadEvents(0);
+    }
+}
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        applyFilters();
+    }, 500);
+}
+
+function clearFilters() {
+    document.getElementById('stateFilter').value = '';
+    document.getElementById('guildFilter').value = '';
+    document.getElementById('searchFilter').value = '';
+    applyFilters();
+}
+
+function exportEvents() {
+    const exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+    exportModal.show();
+}
+
+async function performExport() {
+    try {
+        const format = document.getElementById('exportFormat').value;
+        const dateRange = document.getElementById('exportDateRange').value;
+        const filters = getFilters();
+        
+        const queryParams = new URLSearchParams({
+            format: format,
+            ...filters
+        });
+        
+        if (dateRange) {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - parseInt(dateRange));
+            queryParams.append('start_date', startDate.toISOString());
+            queryParams.append('end_date', endDate.toISOString());
+        }
+        
+        const url = `/api/export/events?${queryParams}`;
+        
+        if (format === 'csv') {
+            window.open(url, '_blank');
+        } else {
+            const response = await makeAuthenticatedRequest(url);
+            const data = await response.json();
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `events_export_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+        }
+        
+        const exportModal = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
+        exportModal.hide();
+        
+        showToast('Export completed!', 'success');
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Export failed', 'error');
+    }
 }
 
 function getStateBadgeColor(state) {
@@ -151,9 +638,9 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function updatePagination(count, currentPage) {
+function updatePagination(total, currentPage) {
     const pagination = document.getElementById('pagination');
-    const totalPages = Math.ceil(count / eventsPerPage);
+    const totalPages = Math.ceil(total / eventsPerPage);
     
     if (totalPages <= 1) {
         pagination.innerHTML = '';
@@ -204,30 +691,37 @@ function changePage(page) {
 }
 
 function refreshEvents() {
-    loadEvents(currentPage);
+    if (currentView === 'calendar') {
+        loadCalendarView();
+    } else {
+        loadEvents(currentPage);
+    }
     showToast('Events refreshed!', 'success');
 }
 
 function showError(message) {
-    const tbody = document.getElementById('eventsTableBody');
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="5" class="text-center text-danger">
-                <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
-                <p class="mt-2">${message}</p>
-            </td>
-        </tr>
-    `;
+    if (currentView === 'list') {
+        const tbody = document.getElementById('eventsTableBody');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-danger">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
+                    <p class="mt-2">${message}</p>
+                </td>
+            </tr>
+        `;
+    } else {
+        showToast(message, 'error');
+    }
 }
 
 function showToast(message, type = 'info') {
-    // Simple toast notification
     const toast = document.createElement('div');
-    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed`;
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
     toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
     toast.innerHTML = `
         <div class="d-flex align-items-center">
-            <i class="bi bi-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
             ${message}
             <button type="button" class="btn-close ms-auto" onclick="this.parentElement.parentElement.remove()"></button>
         </div>
@@ -235,17 +729,11 @@ function showToast(message, type = 'info') {
     
     document.body.appendChild(toast);
     
-    // Auto-remove after 3 seconds
     setTimeout(() => {
         if (toast.parentElement) {
             toast.remove();
         }
     }, 3000);
 }
-
-// Load events when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    loadEvents(0);
-});
 </script>
 {% endblock %}

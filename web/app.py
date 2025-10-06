@@ -10,6 +10,8 @@ import os
 import sys
 import secrets
 import logging
+import json
+import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
@@ -17,7 +19,7 @@ from typing import Optional, List, Dict, Any, Union
 # Add src to Python path for imports
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, status, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -827,9 +829,13 @@ async def get_events(
     current_user: UserSession = Depends(require_authentication),
     limit: int = 50, 
     skip: int = 0,
-    guild_id: Optional[str] = None
+    guild_id: Optional[str] = None,
+    state: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
 ):
-    """Get recent events."""
+    """Get events with filtering and search capabilities."""
     try:
         logger.info("Events accessed", user_id=current_user.user_id, limit=limit, skip=skip)
         
@@ -838,7 +844,8 @@ async def get_events(
                 "success": False,
                 "error": "Database not available",
                 "data": [],
-                "count": 0
+                "count": 0,
+                "total": 0
             }
         
         # Build query filter
@@ -853,7 +860,30 @@ async def get_events(
             # Only show events from guilds user has access to
             query_filter["guild_id"] = {"$in": current_user.guild_ids}
         
-        # Get recent events
+        # Filter by state
+        if state:
+            query_filter["state"] = state
+        
+        # Search in title and description
+        if search:
+            query_filter["$or"] = [
+                {"title": {"$regex": search, "$options": "i"}},
+                {"description": {"$regex": search, "$options": "i"}}
+            ]
+        
+        # Date range filter
+        if start_date or end_date:
+            date_filter = {}
+            if start_date:
+                date_filter["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if end_date:
+                date_filter["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query_filter["created_at"] = date_filter
+        
+        # Get total count for pagination
+        total_count = await database.events.count_documents(query_filter)
+        
+        # Get events with pagination
         events_cursor = database.events.find(query_filter).sort("created_at", -1).limit(limit).skip(skip)
         events = []
         
@@ -869,6 +899,7 @@ async def get_events(
             "success": True,
             "data": events,
             "count": len(events),
+            "total": total_count,
             "timestamp": datetime.utcnow().isoformat()
         }
     except HTTPException:
@@ -876,6 +907,397 @@ async def get_events(
     except Exception as e:
         logger.error("Events error", error=str(e), user_id=current_user.user_id)
         raise HTTPException(status_code=500, detail=f"Events error: {str(e)}")
+
+# Enhanced API endpoints for dashboard functionality
+
+@app.get("/api/events/calendar")
+async def get_events_calendar(
+    current_user: UserSession = Depends(require_authentication),
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    guild_id: Optional[str] = None
+):
+    """Get events formatted for calendar view."""
+    try:
+        if not database:
+            return {"success": False, "error": "Database not available", "data": []}
+        
+        # Default to current month/year
+        now = datetime.utcnow()
+        target_month = month or now.month
+        target_year = year or now.year
+        
+        # Calculate date range for the month
+        start_date = datetime(target_year, target_month, 1)
+        if target_month == 12:
+            end_date = datetime(target_year + 1, 1, 1)
+        else:
+            end_date = datetime(target_year, target_month + 1, 1)
+        
+        # Build query
+        query_filter = {
+            "guild_id": {"$in": current_user.guild_ids},
+            "$or": [
+                {"schedule.selected_date": {"$gte": start_date, "$lt": end_date}},
+                {"created_at": {"$gte": start_date, "$lt": end_date}}
+            ]
+        }
+        
+        if guild_id and guild_id in current_user.guild_ids:
+            query_filter["guild_id"] = guild_id
+        
+        events = []
+        async for event_doc in database.events.find(query_filter):
+            # Format for calendar
+            event_date = event_doc.get("schedule", {}).get("selected_date") or event_doc.get("created_at")
+            events.append({
+                "id": str(event_doc["_id"]),
+                "title": event_doc["title"],
+                "date": event_date.isoformat() if event_date else None,
+                "state": event_doc["state"],
+                "guild_id": event_doc["guild_id"]
+            })
+        
+        return {
+            "success": True,
+            "data": events,
+            "month": target_month,
+            "year": target_year,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Calendar events error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Calendar events error: {str(e)}")
+
+@app.get("/api/users")
+async def get_users(
+    current_user: UserSession = Depends(require_admin_permissions),
+    limit: int = 50,
+    skip: int = 0,
+    search: Optional[str] = None,
+    guild_id: Optional[str] = None,
+    active_only: bool = False
+):
+    """Get users with filtering and search capabilities."""
+    try:
+        if not database:
+            return {"success": False, "error": "Database not available", "data": [], "total": 0}
+        
+        # Build query filter
+        query_filter = {}
+        
+        if guild_id and guild_id in current_user.guild_ids:
+            query_filter["guild_id"] = guild_id
+        else:
+            query_filter["guild_id"] = {"$in": current_user.guild_ids}
+        
+        # Search filter
+        if search:
+            query_filter["$or"] = [
+                {"profile.display_name": {"$regex": search, "$options": "i"}},
+                {"user_id": {"$regex": search, "$options": "i"}}
+            ]
+        
+        # Active users filter (users with recent activity)
+        if active_only:
+            week_ago = datetime.utcnow() - timedelta(days=7)
+            query_filter["last_activity"] = {"$gte": week_ago}
+        
+        # Get total count
+        total_count = await database.users.count_documents(query_filter)
+        
+        # Get users
+        users = []
+        async for user_doc in database.users.find(query_filter).limit(limit).skip(skip):
+            user_doc["_id"] = str(user_doc["_id"])
+            # Remove sensitive data
+            if "email" in user_doc:
+                del user_doc["email"]
+            users.append(user_doc)
+        
+        return {
+            "success": True,
+            "data": users,
+            "count": len(users),
+            "total": total_count,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Users API error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Users API error: {str(e)}")
+
+@app.get("/api/analytics/attendance")
+async def get_attendance_analytics(
+    current_user: UserSession = Depends(require_authentication),
+    days: int = 30,
+    guild_id: Optional[str] = None
+):
+    """Get attendance analytics data."""
+    try:
+        if not database:
+            return {"success": False, "error": "Database not available", "data": {}}
+        
+        # Date range
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        # Build query
+        query_filter = {
+            "guild_id": {"$in": current_user.guild_ids},
+            "state": "COMPLETED",
+            "schedule.selected_date": {"$gte": start_date, "$lte": end_date}
+        }
+        
+        if guild_id and guild_id in current_user.guild_ids:
+            query_filter["guild_id"] = guild_id
+        
+        # Aggregate attendance data
+        pipeline = [
+            {"$match": query_filter},
+            {"$group": {
+                "_id": {
+                    "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$schedule.selected_date"}}
+                },
+                "total_events": {"$sum": 1},
+                "total_attendees": {"$sum": {"$size": {"$ifNull": ["$attendance.confirmed", []]}}},
+                "avg_attendance": {"$avg": {"$size": {"$ifNull": ["$attendance.confirmed", []]}}}
+            }},
+            {"$sort": {"_id.date": 1}}
+        ]
+        
+        attendance_data = []
+        async for doc in database.events.aggregate(pipeline):
+            attendance_data.append({
+                "date": doc["_id"]["date"],
+                "events": doc["total_events"],
+                "attendees": doc["total_attendees"],
+                "avg_attendance": round(doc["avg_attendance"], 2)
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "daily_attendance": attendance_data,
+                "period_days": days,
+                "total_events": len(attendance_data)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Attendance analytics error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Attendance analytics error: {str(e)}")
+
+@app.get("/api/analytics/games")
+async def get_games_analytics(
+    current_user: UserSession = Depends(require_authentication),
+    days: int = 30,
+    guild_id: Optional[str] = None
+):
+    """Get game popularity analytics."""
+    try:
+        if not database:
+            return {"success": False, "error": "Database not available", "data": {}}
+        
+        # Date range
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        # Build query for completed events
+        query_filter = {
+            "guild_id": {"$in": current_user.guild_ids},
+            "state": "COMPLETED",
+            "schedule.selected_date": {"$gte": start_date, "$lte": end_date}
+        }
+        
+        if guild_id and guild_id in current_user.guild_ids:
+            query_filter["guild_id"] = guild_id
+        
+        # Aggregate game popularity
+        pipeline = [
+            {"$match": query_filter},
+            {"$unwind": {"path": "$polls.game_poll.selected_games", "preserveNullAndEmptyArrays": True}},
+            {"$group": {
+                "_id": "$polls.game_poll.selected_games",
+                "play_count": {"$sum": 1},
+                "total_attendees": {"$sum": {"$size": {"$ifNull": ["$attendance.confirmed", []]}}}
+            }},
+            {"$match": {"_id": {"$ne": None}}},
+            {"$sort": {"play_count": -1}},
+            {"$limit": 20}
+        ]
+        
+        games_data = []
+        async for doc in database.events.aggregate(pipeline):
+            games_data.append({
+                "game": doc["_id"],
+                "play_count": doc["play_count"],
+                "total_attendees": doc["total_attendees"]
+            })
+        
+        # Get game interests data
+        interests_pipeline = [
+            {"$match": {"guild_id": {"$in": current_user.guild_ids}}},
+            {"$unwind": {"path": "$game_interests", "preserveNullAndEmptyArrays": True}},
+            {"$group": {
+                "_id": "$game_interests",
+                "interest_count": {"$sum": 1}
+            }},
+            {"$match": {"_id": {"$ne": None}}},
+            {"$sort": {"interest_count": -1}},
+            {"$limit": 20}
+        ]
+        
+        interests_data = []
+        async for doc in database.users.aggregate(interests_pipeline):
+            interests_data.append({
+                "game": doc["_id"],
+                "interest_count": doc["interest_count"]
+            })
+        
+        return {
+            "success": True,
+            "data": {
+                "popular_games": games_data,
+                "game_interests": interests_data,
+                "period_days": days
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Games analytics error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Games analytics error: {str(e)}")
+
+@app.get("/api/config")
+async def get_config(current_user: UserSession = Depends(require_admin_permissions)):
+    """Get bot configuration for the user's guilds."""
+    try:
+        if not database:
+            return {"success": False, "error": "Database not available", "data": {}}
+        
+        # Get guild configurations
+        configs = []
+        async for config_doc in database.guild_configs.find({"guild_id": {"$in": current_user.guild_ids}}):
+            config_doc["_id"] = str(config_doc["_id"])
+            configs.append(config_doc)
+        
+        return {
+            "success": True,
+            "data": configs,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Config API error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Config API error: {str(e)}")
+
+@app.put("/api/config/{guild_id}")
+async def update_config(
+    guild_id: str,
+    config_data: dict,
+    current_user: UserSession = Depends(require_admin_permissions)
+):
+    """Update guild configuration."""
+    try:
+        if guild_id not in current_user.guild_ids:
+            raise HTTPException(status_code=403, detail="Access denied to this guild")
+        
+        if not database:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Validate configuration data
+        allowed_fields = [
+            "default_timezone", "notification_channels", "admin_roles", 
+            "organizer_roles", "default_reminder_times", "max_events_per_user"
+        ]
+        
+        validated_config = {k: v for k, v in config_data.items() if k in allowed_fields}
+        validated_config["updated_at"] = datetime.utcnow()
+        validated_config["updated_by"] = current_user.user_id
+        
+        # Update or create configuration
+        result = await database.guild_configs.update_one(
+            {"guild_id": guild_id},
+            {"$set": validated_config},
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Configuration updated successfully",
+            "modified_count": result.modified_count,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Config update error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Config update error: {str(e)}")
+
+@app.get("/api/export/events")
+async def export_events(
+    current_user: UserSession = Depends(require_authentication),
+    format: str = "json",
+    guild_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """Export events data."""
+    try:
+        if not database:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Build query
+        query_filter = {"guild_id": {"$in": current_user.guild_ids}}
+        
+        if guild_id and guild_id in current_user.guild_ids:
+            query_filter["guild_id"] = guild_id
+        
+        if start_date or end_date:
+            date_filter = {}
+            if start_date:
+                date_filter["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if end_date:
+                date_filter["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query_filter["created_at"] = date_filter
+        
+        # Get events
+        events = []
+        async for event_doc in database.events.find(query_filter).sort("created_at", -1):
+            event_doc["_id"] = str(event_doc["_id"])
+            events.append(event_doc)
+        
+        if format.lower() == "csv":
+            # Convert to CSV format
+            import csv
+            import io
+            
+            output = io.StringIO()
+            if events:
+                fieldnames = ["title", "state", "created_at", "guild_id", "creator_id"]
+                writer = csv.DictWriter(output, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                for event in events:
+                    row = {field: event.get(field, "") for field in fieldnames}
+                    writer.writerow(row)
+            
+            return Response(
+                content=output.getvalue(),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=events_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"}
+            )
+        else:
+            # JSON format
+            return {
+                "success": True,
+                "data": events,
+                "count": len(events),
+                "exported_at": datetime.utcnow().isoformat()
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Export events error", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail=f"Export events error: {str(e)}")
 
 @app.get("/api/csrf-token")
 async def get_csrf_token(current_user: UserSession = Depends(require_authentication)):
@@ -937,6 +1359,88 @@ async def monitoring_page(request: Request, current_user: UserSession = Depends(
         logger.error("Monitoring page error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Monitoring page error: {str(e)}")
 
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request, current_user: UserSession = Depends(require_authentication)):
+    """Analytics dashboard page."""
+    try:
+        csrf_token = security_manager.generate_csrf_token()
+        
+        return templates.TemplateResponse("analytics.html", {
+            "request": request,
+            "title": "Analytics - Game Night Bot Dashboard",
+            "user": current_user,
+            "csrf_token": csrf_token
+        })
+    except Exception as e:
+        logger.error("Analytics page error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Analytics page error: {str(e)}")
+
+@app.get("/config", response_class=HTMLResponse)
+async def config_page(request: Request, current_user: UserSession = Depends(require_admin_permissions)):
+    """Configuration management page - admin only."""
+    try:
+        csrf_token = security_manager.generate_csrf_token()
+        
+        return templates.TemplateResponse("config.html", {
+            "request": request,
+            "title": "Configuration - Game Night Bot Dashboard",
+            "user": current_user,
+            "csrf_token": csrf_token
+        })
+    except Exception as e:
+        logger.error("Config page error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Config page error: {str(e)}")
+
+
+# WebSocket connection manager for real-time updates
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+    
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove disconnected connections
+                self.active_connections.remove(connection)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws/status")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time status updates."""
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Send status updates every 10 seconds
+            await asyncio.sleep(10)
+            
+            # Get current stats
+            stats = await get_dashboard_stats()
+            health_data = {
+                "type": "status_update",
+                "data": {
+                    "stats": stats,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "database_status": "connected" if database else "disconnected"
+                }
+            }
+            
+            await manager.send_personal_message(json.dumps(health_data), websocket)
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 async def get_dashboard_stats() -> Dict[str, Any]:
     """Get dashboard statistics."""

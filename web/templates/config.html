@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - Game Night Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid #007bff;
+    }
+    .config-preview {
+        background: #e9ecef;
+        border-radius: 5px;
+        padding: 1rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .validation-feedback {
+        display: block;
+    }
+    .config-help {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 5px;
+        padding: 0.75rem;
+        margin-top: 0.5rem;
+    }
+    .guild-selector {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-gear"></i>
+        Bot Configuration
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadConfigurations()">
+                <i class="bi bi-arrow-clockwise"></i>
+                Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" onclick="previewConfig()">
+                <i class="bi bi-eye"></i>
+                Preview
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" onclick="saveConfiguration()">
+                <i class="bi bi-check-circle"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Guild Selection -->
+<div class="guild-selector">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h5 class="mb-1">
+                <i class="bi bi-server"></i>
+                Server Configuration
+            </h5>
+            <p class="mb-0 opacity-75">Configure bot settings for your Discord servers</p>
+        </div>
+        <div class="col-md-4">
+            <select class="form-select" id="guildSelector" onchange="loadGuildConfig()">
+                <option value="">Select a server...</option>
+                <!-- Guild options will be populated by JavaScript -->
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Form -->
+<div id="configForm" style="display: none;">
+    <form id="botConfigForm">
+        <!-- General Settings -->
+        <div class="config-section">
+            <h5 class="mb-3">
+                <i class="bi bi-sliders"></i>
+                General Settings
+            </h5>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="defaultTimezone" class="form-label">Default Timezone</label>
+                        <select class="form-select" id="defaultTimezone" name="default_timezone">
+                            <option value="UTC">UTC</option>
+                            <option value="America/New_York">Eastern Time</option>
+                            <option value="America/Chicago">Central Time</option>
+                            <option value="America/Denver">Mountain Time</option>
+                            <option value="America/Los_Angeles">Pacific Time</option>
+                            <option value="Europe/London">London</option>
+                            <option value="Europe/Paris">Paris</option>
+                            <option value="Asia/Tokyo">Tokyo</option>
+                        </select>
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Default timezone for events when users haven't set their preference</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="maxEventsPerUser" class="form-label">Max Events per User</label>
+                        <input type="number" class="form-control" id="maxEventsPerUser" name="max_events_per_user" 
+                               min="1" max="50" value="10">
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Maximum number of active events a user can create</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Settings -->
+        <div class="config-section">
+            <h5 class="mb-3">
+                <i class="bi bi-bell"></i>
+                Notification Settings
+            </h5>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="notificationChannels" class="form-label">Notification Channels</label>
+                        <input type="text" class="form-control" id="notificationChannels" name="notification_channels" 
+                               placeholder="Channel IDs (comma-separated)">
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Discord channel IDs where bot notifications will be sent</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="defaultReminderTimes" class="form-label">Default Reminder Times</label>
+                        <input type="text" class="form-control" id="defaultReminderTimes" name="default_reminder_times" 
+                               value="24,1" placeholder="Hours before event (comma-separated)">
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Default reminder times in hours before events</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Permission Settings -->
+        <div class="config-section">
+            <h5 class="mb-3">
+                <i class="bi bi-shield-check"></i>
+                Permission Settings
+            </h5>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="adminRoles" class="form-label">Admin Roles</label>
+                        <input type="text" class="form-control" id="adminRoles" name="admin_roles" 
+                               placeholder="Role IDs (comma-separated)">
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Discord role IDs with full bot administration access</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="organizerRoles" class="form-label">Organizer Roles</label>
+                        <input type="text" class="form-control" id="organizerRoles" name="organizer_roles" 
+                               placeholder="Role IDs (comma-separated)">
+                        <div class="config-help">
+                            <small><i class="bi bi-info-circle"></i> Discord role IDs that can create and manage events</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Settings -->
+        <div class="config-section">
+            <h5 class="mb-3">
+                <i class="bi bi-tools"></i>
+                Advanced Settings
+            </h5>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableAutoScheduling" name="enable_auto_scheduling">
+                        <label class="form-check-label" for="enableAutoScheduling">
+                            Auto-scheduling
+                        </label>
+                        <div class="config-help">
+                            <small>Automatically schedule events based on user availability</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableGameSuggestions" name="enable_game_suggestions">
+                        <label class="form-check-label" for="enableGameSuggestions">
+                            Game Suggestions
+                        </label>
+                        <div class="config-help">
+                            <small>Suggest games based on user interests and popularity</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableAnalytics" name="enable_analytics">
+                        <label class="form-check-label" for="enableAnalytics">
+                            Analytics Collection
+                        </label>
+                        <div class="config-help">
+                            <small>Collect usage analytics for insights and improvements</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Configuration Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configuration Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="config-preview" id="configPreview">
+                    <!-- Configuration preview will be displayed here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveConfiguration()">
+                    <i class="bi bi-check-circle"></i> Apply Configuration
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- No Guild Selected Message -->
+<div id="noGuildMessage" class="text-center py-5">
+    <i class="bi bi-server" style="font-size: 4rem; color: #6c757d;"></i>
+    <h4 class="mt-3 text-muted">Select a Server</h4>
+    <p class="text-muted">Choose a Discord server from the dropdown above to configure bot settings.</p>
+</div>
+
+<!-- Validation Messages -->
+<div id="validationMessages" class="alert alert-warning" style="display: none;">
+    <h6><i class="bi bi-exclamation-triangle"></i> Configuration Issues</h6>
+    <ul id="validationList"></ul>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentGuildId = null;
+let originalConfig = {};
+
+// Initialize configuration page
+document.addEventListener('DOMContentLoaded', function() {
+    loadGuildList();
+});
+
+async function loadGuildList() {
+    try {
+        // Get user info to populate guild selector
+        const response = await makeAuthenticatedRequest('/auth/me');
+        const userData = await response.json();
+        
+        if (userData.guild_ids && userData.guild_ids.length > 0) {
+            const guildSelector = document.getElementById('guildSelector');
+            guildSelector.innerHTML = '<option value="">Select a server...</option>';
+            
+            // In a real implementation, you'd fetch guild names from Discord API
+            userData.guild_ids.forEach(guildId => {
+                const option = document.createElement('option');
+                option.value = guildId;
+                option.textContent = `Server ${guildId.substring(0, 8)}...`;
+                guildSelector.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading guild list:', error);
+        showToast('Error loading server list', 'error');
+    }
+}
+
+async function loadGuildConfig() {
+    const guildId = document.getElementById('guildSelector').value;
+    
+    if (!guildId) {
+        document.getElementById('configForm').style.display = 'none';
+        document.getElementById('noGuildMessage').style.display = 'block';
+        return;
+    }
+    
+    currentGuildId = guildId;
+    document.getElementById('noGuildMessage').style.display = 'none';
+    document.getElementById('configForm').style.display = 'block';
+    
+    try {
+        const response = await makeAuthenticatedRequest('/api/config');
+        const result = await response.json();
+        
+        if (result.success) {
+            const guildConfig = result.data.find(config => config.guild_id === guildId) || {};
+            originalConfig = { ...guildConfig };
+            populateConfigForm(guildConfig);
+        }
+    } catch (error) {
+        console.error('Error loading guild config:', error);
+        showToast('Error loading configuration', 'error');
+    }
+}
+
+function populateConfigForm(config) {
+    // Populate form fields with configuration data
+    document.getElementById('defaultTimezone').value = config.default_timezone || 'UTC';
+    document.getElementById('maxEventsPerUser').value = config.max_events_per_user || 10;
+    document.getElementById('notificationChannels').value = (config.notification_channels || []).join(', ');
+    document.getElementById('defaultReminderTimes').value = (config.default_reminder_times || [24, 1]).join(', ');
+    document.getElementById('adminRoles').value = (config.admin_roles || []).join(', ');
+    document.getElementById('organizerRoles').value = (config.organizer_roles || []).join(', ');
+    
+    // Set checkboxes
+    document.getElementById('enableAutoScheduling').checked = config.enable_auto_scheduling || false;
+    document.getElementById('enableGameSuggestions').checked = config.enable_game_suggestions || false;
+    document.getElementById('enableAnalytics').checked = config.enable_analytics || false;
+    
+    // Clear validation messages
+    document.getElementById('validationMessages').style.display = 'none';
+}
+
+function validateConfiguration() {
+    const errors = [];
+    
+    // Validate timezone
+    const timezone = document.getElementById('defaultTimezone').value;
+    if (!timezone) {
+        errors.push('Default timezone is required');
+    }
+    
+    // Validate max events per user
+    const maxEvents = parseInt(document.getElementById('maxEventsPerUser').value);
+    if (isNaN(maxEvents) || maxEvents < 1 || maxEvents > 50) {
+        errors.push('Max events per user must be between 1 and 50');
+    }
+    
+    // Validate notification channels (if provided)
+    const notificationChannels = document.getElementById('notificationChannels').value.trim();
+    if (notificationChannels) {
+        const channelIds = notificationChannels.split(',').map(id => id.trim());
+        const invalidChannels = channelIds.filter(id => !/^\d{17,19}$/.test(id));
+        if (invalidChannels.length > 0) {
+            errors.push('Invalid Discord channel IDs detected');
+        }
+    }
+    
+    // Validate reminder times
+    const reminderTimes = document.getElementById('defaultReminderTimes').value.trim();
+    if (reminderTimes) {
+        const times = reminderTimes.split(',').map(t => parseInt(t.trim()));
+        const invalidTimes = times.filter(t => isNaN(t) || t < 0 || t > 168);
+        if (invalidTimes.length > 0) {
+            errors.push('Reminder times must be between 0 and 168 hours');
+        }
+    }
+    
+    // Display validation errors
+    if (errors.length > 0) {
+        const validationMessages = document.getElementById('validationMessages');
+        const validationList = document.getElementById('validationList');
+        
+        validationList.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
+        validationMessages.style.display = 'block';
+        
+        // Scroll to validation messages
+        validationMessages.scrollIntoView({ behavior: 'smooth' });
+        return false;
+    }
+    
+    document.getElementById('validationMessages').style.display = 'none';
+    return true;
+}
+
+function getConfigurationData() {
+    const formData = new FormData(document.getElementById('botConfigForm'));
+    const config = {};
+    
+    // Convert form data to configuration object
+    for (const [key, value] of formData.entries()) {
+        if (key.includes('_channels') || key.includes('_roles') || key.includes('_times')) {
+            // Convert comma-separated values to arrays
+            config[key] = value.split(',').map(item => item.trim()).filter(item => item);
+        } else if (key.startsWith('enable_')) {
+            // Handle checkboxes
+            config[key] = true;
+        } else {
+            config[key] = value;
+        }
+    }
+    
+    // Handle unchecked checkboxes
+    const checkboxes = ['enable_auto_scheduling', 'enable_game_suggestions', 'enable_analytics'];
+    checkboxes.forEach(checkbox => {
+        if (!config[checkbox]) {
+            config[checkbox] = false;
+        }
+    });
+    
+    return config;
+}
+
+function previewConfig() {
+    if (!validateConfiguration()) {
+        return;
+    }
+    
+    const config = getConfigurationData();
+    const preview = JSON.stringify(config, null, 2);
+    
+    document.getElementById('configPreview').textContent = preview;
+    
+    const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+    previewModal.show();
+}
+
+async function saveConfiguration() {
+    if (!currentGuildId) {
+        showToast('Please select a server first', 'error');
+        return;
+    }
+    
+    if (!validateConfiguration()) {
+        return;
+    }
+    
+    try {
+        const config = getConfigurationData();
+        
+        const response = await makeAuthenticatedRequest(`/api/config/${currentGuildId}`, {
+            method: 'PUT',
+            body: JSON.stringify(config)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            originalConfig = { ...config };
+            showToast('Configuration saved successfully!', 'success');
+            
+            // Close preview modal if open
+            const previewModal = bootstrap.Modal.getInstance(document.getElementById('previewModal'));
+            if (previewModal) {
+                previewModal.hide();
+            }
+        } else {
+            showToast('Failed to save configuration: ' + result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving configuration:', error);
+        showToast('Error saving configuration', 'error');
+    }
+}
+
+function loadConfigurations() {
+    if (currentGuildId) {
+        loadGuildConfig();
+        showToast('Configuration refreshed!', 'success');
+    }
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close ms-auto" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+
+// Warn user about unsaved changes
+window.addEventListener('beforeunload', function(e) {
+    if (currentGuildId && hasUnsavedChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+function hasUnsavedChanges() {
+    if (!currentGuildId) return false;
+    
+    const currentConfig = getConfigurationData();
+    return JSON.stringify(currentConfig) !== JSON.stringify(originalConfig);
+}
+</script>
+{% endblock %}

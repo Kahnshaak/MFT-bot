@@ -1,0 +1,526 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Game Night Bot{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .chart-container {
+        position: relative;
+        height: 400px;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    .metric-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    .analytics-filters {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-graph-up"></i>
+        Analytics Dashboard
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshAnalytics()">
+                <i class="bi bi-arrow-clockwise"></i>
+                Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="exportAnalytics()">
+                <i class="bi bi-download"></i>
+                Export
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Analytics Filters -->
+<div class="analytics-filters">
+    <div class="row">
+        <div class="col-md-3">
+            <label for="timeRange" class="form-label">Time Range</label>
+            <select class="form-select" id="timeRange" onchange="updateAnalytics()">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="365">Last year</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="guildFilter" class="form-label">Server</label>
+            <select class="form-select" id="guildFilter" onchange="updateAnalytics()">
+                <option value="">All Servers</option>
+                <!-- Guild options will be populated by JavaScript -->
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Quick Actions</label>
+            <div class="btn-group w-100" role="group">
+                <button type="button" class="btn btn-outline-primary" onclick="showAttendanceView()">
+                    <i class="bi bi-people"></i> Attendance
+                </button>
+                <button type="button" class="btn btn-outline-success" onclick="showGamesView()">
+                    <i class="bi bi-controller"></i> Games
+                </button>
+                <button type="button" class="btn btn-outline-info" onclick="showTrendsView()">
+                    <i class="bi bi-graph-up-arrow"></i> Trends
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Key Metrics -->
+<div class="row mb-4">
+    <div class="col-lg-3 col-md-6">
+        <div class="metric-card">
+            <div class="metric-value" id="totalEvents">-</div>
+            <div class="metric-label">Total Events</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="metric-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="metric-value" id="avgAttendance">-</div>
+            <div class="metric-label">Avg Attendance</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="metric-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <div class="metric-value" id="popularGame">-</div>
+            <div class="metric-label">Most Popular Game</div>
+        </div>
+    </div>
+    <div class="col-lg-3 col-md-6">
+        <div class="metric-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+            <div class="metric-value" id="activeUsers">-</div>
+            <div class="metric-label">Active Users</div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row">
+    <!-- Attendance Chart -->
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-graph-up"></i>
+                    Attendance Trends
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="attendanceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Game Popularity -->
+    <div class="col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-controller"></i>
+                    Popular Games
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="gamesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Analytics Tables -->
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-table"></i>
+                    Game Statistics
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Game</th>
+                                <th>Times Played</th>
+                                <th>Total Attendees</th>
+                                <th>Avg per Event</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gameStatsTable">
+                            <tr>
+                                <td colspan="4" class="text-center">
+                                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                                    Loading...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-heart"></i>
+                    Game Interests
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Game</th>
+                                <th>Interested Users</th>
+                                <th>Interest Level</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gameInterestsTable">
+                            <tr>
+                                <td colspan="3" class="text-center">
+                                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                                    Loading...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Analytics Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="exportForm">
+                    <div class="mb-3">
+                        <label for="exportFormat" class="form-label">Format</label>
+                        <select class="form-select" id="exportFormat">
+                            <option value="json">JSON</option>
+                            <option value="csv">CSV</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="exportDateRange" class="form-label">Date Range</label>
+                        <select class="form-select" id="exportDateRange">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="365">Last year</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="performExport()">
+                    <i class="bi bi-download"></i> Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let attendanceChart = null;
+let gamesChart = null;
+
+// Initialize analytics dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    loadAnalytics();
+});
+
+function initializeCharts() {
+    // Attendance Chart
+    const attendanceCtx = document.getElementById('attendanceChart').getContext('2d');
+    attendanceChart = new Chart(attendanceCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Daily Attendance',
+                data: [],
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Games Chart
+    const gamesCtx = document.getElementById('gamesChart').getContext('2d');
+    gamesChart = new Chart(gamesCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                    '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+async function loadAnalytics() {
+    try {
+        const timeRange = document.getElementById('timeRange').value;
+        const guildId = document.getElementById('guildFilter').value;
+        
+        // Load attendance data
+        const attendanceResponse = await makeAuthenticatedRequest(
+            `/api/analytics/attendance?days=${timeRange}${guildId ? `&guild_id=${guildId}` : ''}`
+        );
+        const attendanceData = await attendanceResponse.json();
+        
+        if (attendanceData.success) {
+            updateAttendanceChart(attendanceData.data.daily_attendance);
+            updateMetrics(attendanceData.data);
+        }
+        
+        // Load games data
+        const gamesResponse = await makeAuthenticatedRequest(
+            `/api/analytics/games?days=${timeRange}${guildId ? `&guild_id=${guildId}` : ''}`
+        );
+        const gamesData = await gamesResponse.json();
+        
+        if (gamesData.success) {
+            updateGamesChart(gamesData.data.popular_games);
+            updateGamesTables(gamesData.data);
+        }
+        
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        showToast('Error loading analytics data', 'error');
+    }
+}
+
+function updateAttendanceChart(data) {
+    const labels = data.map(d => d.date);
+    const attendees = data.map(d => d.attendees);
+    
+    attendanceChart.data.labels = labels;
+    attendanceChart.data.datasets[0].data = attendees;
+    attendanceChart.update();
+}
+
+function updateGamesChart(games) {
+    const topGames = games.slice(0, 8); // Show top 8 games
+    const labels = topGames.map(g => g.game);
+    const data = topGames.map(g => g.play_count);
+    
+    gamesChart.data.labels = labels;
+    gamesChart.data.datasets[0].data = data;
+    gamesChart.update();
+}
+
+function updateMetrics(attendanceData) {
+    const totalEvents = attendanceData.daily_attendance.reduce((sum, d) => sum + d.events, 0);
+    const totalAttendees = attendanceData.daily_attendance.reduce((sum, d) => sum + d.attendees, 0);
+    const avgAttendance = totalEvents > 0 ? Math.round(totalAttendees / totalEvents) : 0;
+    
+    document.getElementById('totalEvents').textContent = totalEvents;
+    document.getElementById('avgAttendance').textContent = avgAttendance;
+}
+
+function updateGamesTables(gamesData) {
+    // Update game statistics table
+    const gameStatsTable = document.getElementById('gameStatsTable');
+    if (gamesData.popular_games.length === 0) {
+        gameStatsTable.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No data available</td></tr>';
+    } else {
+        gameStatsTable.innerHTML = gamesData.popular_games.map(game => `
+            <tr>
+                <td><strong>${escapeHtml(game.game)}</strong></td>
+                <td><span class="badge bg-primary">${game.play_count}</span></td>
+                <td>${game.total_attendees}</td>
+                <td>${Math.round(game.total_attendees / game.play_count)}</td>
+            </tr>
+        `).join('');
+    }
+    
+    // Update game interests table
+    const gameInterestsTable = document.getElementById('gameInterestsTable');
+    if (gamesData.game_interests.length === 0) {
+        gameInterestsTable.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No data available</td></tr>';
+    } else {
+        gameInterestsTable.innerHTML = gamesData.game_interests.map(game => {
+            const interestLevel = game.interest_count > 10 ? 'High' : game.interest_count > 5 ? 'Medium' : 'Low';
+            const badgeColor = game.interest_count > 10 ? 'success' : game.interest_count > 5 ? 'warning' : 'secondary';
+            
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(game.game)}</strong></td>
+                    <td>${game.interest_count}</td>
+                    <td><span class="badge bg-${badgeColor}">${interestLevel}</span></td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    // Update popular game metric
+    if (gamesData.popular_games.length > 0) {
+        document.getElementById('popularGame').textContent = gamesData.popular_games[0].game.substring(0, 15) + 
+            (gamesData.popular_games[0].game.length > 15 ? '...' : '');
+    }
+}
+
+function updateAnalytics() {
+    loadAnalytics();
+}
+
+function refreshAnalytics() {
+    loadAnalytics();
+    showToast('Analytics refreshed!', 'success');
+}
+
+function showAttendanceView() {
+    // Focus on attendance chart
+    document.querySelector('#attendanceChart').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showGamesView() {
+    // Focus on games chart
+    document.querySelector('#gamesChart').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showTrendsView() {
+    // Show trends analysis
+    showToast('Trends analysis coming soon!', 'info');
+}
+
+function exportAnalytics() {
+    const exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+    exportModal.show();
+}
+
+async function performExport() {
+    try {
+        const format = document.getElementById('exportFormat').value;
+        const dateRange = document.getElementById('exportDateRange').value;
+        const guildId = document.getElementById('guildFilter').value;
+        
+        const url = `/api/export/events?format=${format}&days=${dateRange}${guildId ? `&guild_id=${guildId}` : ''}`;
+        
+        if (format === 'csv') {
+            // Download CSV file
+            window.open(url, '_blank');
+        } else {
+            // Download JSON
+            const response = await makeAuthenticatedRequest(url);
+            const data = await response.json();
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `analytics_export_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+        }
+        
+        // Close modal
+        const exportModal = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
+        exportModal.hide();
+        
+        showToast('Export completed!', 'success');
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Export failed', 'error');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close ms-auto" onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}
