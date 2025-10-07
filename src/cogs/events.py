@@ -86,20 +86,27 @@ class EventCreationModal(discord.ui.Modal):
             )
             
         except ValidationError as e:
-            await interaction.response.send_message(
-                f"❌ The information you provided isn't valid. Please check your input and try again.",
-                ephemeral=True
-            )
-        except Exception as e:
-            # Use enhanced error handler if available
-            if hasattr(self.cog.bot, 'enhanced_error_handler'):
-                await self.cog.bot.enhanced_error_handler.handle_interaction_error(
-                    interaction, e, {
-                        "operation": "event_creation",
-                        "title": self.title_input.value,
-                        "description": self.description_input.value
-                    }
+            # Use enhanced feedback system
+            if hasattr(self.cog, 'feedback_system'):
+                feedback = self.cog.feedback_system.create_feedback(
+                    template_key="invalid_input",
+                    context={"command": "event create"}
                 )
+                await self.cog.feedback_system.send_feedback(interaction, feedback)
+            else:
+                await interaction.response.send_message(
+                    f"❌ The information you provided isn't valid. Please check your input and try again.",
+                    ephemeral=True
+                )
+        except Exception as e:
+            # Use enhanced feedback system
+            if hasattr(self.cog, 'feedback_system'):
+                feedback = self.cog.feedback_system.from_exception(e, {
+                    "operation": "event_creation",
+                    "title": self.title_input.value,
+                    "description": self.description_input.value
+                })
+                await self.cog.feedback_system.send_feedback(interaction, feedback)
             else:
                 self.cog.logger.error(f"Error creating event: {e}", exc_info=True)
                 await interaction.response.send_message(
@@ -592,13 +599,62 @@ class CancelEventButton(discord.ui.Button):
             )
             return
         
-        # Confirm cancellation
-        confirm_view = ConfirmCancelView(view.cog, view.event)
-        await interaction.response.send_message(
-            f"⚠️ Are you sure you want to cancel **{view.event.title}**?",
-            view=confirm_view,
-            ephemeral=True
+        # Use enhanced confirmation system
+        from core.confirmation_system import ConfirmationType, ConfirmationSeverity
+        
+        confirmation_view = view.cog.confirmation_manager.create_confirmation(
+            action_type=ConfirmationType.CANCEL,
+            severity=ConfirmationSeverity.MEDIUM,
+            title="Cancel Event",
+            description=f"Are you sure you want to cancel **{view.event.title}**?",
+            consequences=[
+                "All participants will be notified",
+                "The event will be permanently cancelled",
+                "This action cannot be undone"
+            ],
+            user_id=str(interaction.user.id),
+            guild_id=str(interaction.guild.id)
         )
+        
+        embed = confirmation_view.create_embed()
+        await interaction.response.send_message(embed=embed, view=confirmation_view, ephemeral=True)
+        
+        # Wait for confirmation
+        await confirmation_view.wait()
+        
+        if confirmation_view.confirmed:
+            try:
+                await view.cog.cancel_event(view.event)
+                
+                # Add undo action
+                undo_id = view.cog.confirmation_manager.add_undo_action(
+                    user_id=str(interaction.user.id),
+                    guild_id=str(interaction.guild.id),
+                    action_type="event_cancellation",
+                    description=f"Cancelled event: {view.event.title}",
+                    undo_function=lambda: view.cog.restore_event(view.event),
+                    expires_minutes=15
+                )
+                
+                success_feedback = view.cog.feedback_system.create_feedback(
+                    message=f"Event **{view.event.title}** has been cancelled",
+                    feedback_type=view.cog.feedback_system.FeedbackType.SUCCESS,
+                    suggestions=[
+                        f"You can undo this action within 15 minutes",
+                        "All participants have been notified",
+                        "Use `/event create` to create a new event"
+                    ]
+                )
+                
+                await view.cog.feedback_system.send_feedback(
+                    interaction, success_feedback, followup=True
+                )
+                
+            except Exception as e:
+                error_feedback = view.cog.feedback_system.from_exception(e)
+                await view.cog.feedback_system.send_feedback(
+                    interaction, error_feedback, followup=True
+                )
 
 
 class ConfirmCancelView(discord.ui.View):
@@ -717,6 +773,15 @@ class EventsCog(commands.Cog, LoggerMixin):
         # Initialize enhanced poll management
         self.poll_manager = PollManager(self.event_bus, bot.database)
         self.poll_notifications = PollNotificationScheduler(self.event_bus, bot.database, bot)
+        
+        # Initialize UX enhancement systems
+        from core.enhanced_user_feedback import EnhancedUserFeedback
+        from core.confirmation_system import confirmation_manager
+        from core.accessibility_enhancements import accessibility_manager
+        
+        self.feedback_system = EnhancedUserFeedback()
+        self.confirmation_manager = confirmation_manager
+        self.accessibility_manager = accessibility_manager
         
         # Subscribe to relevant events
         self.event_bus.subscribe(EventType.SYSTEM_STARTUP, self._on_startup)

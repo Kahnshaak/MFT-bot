@@ -343,6 +343,13 @@ class UsersCog(commands.Cog, LoggerMixin):
         self.event_bus: EventBus = bot.event_bus
         self.repositories: RepositoryManager = RepositoryManager(bot.database)
         
+        # Initialize UX enhancement systems
+        from core.enhanced_user_feedback import EnhancedUserFeedback
+        from core.accessibility_enhancements import accessibility_manager
+        
+        self.feedback_system = EnhancedUserFeedback()
+        self.accessibility_manager = accessibility_manager
+        
         # Subscribe to relevant events
         self.event_bus.subscribe(EventType.USER_JOINED_GUILD, self._on_user_joined)
         self.event_bus.subscribe(EventType.EVENT_RSVP_UPDATED, self._on_rsvp_updated)
@@ -387,7 +394,7 @@ class UsersCog(commands.Cog, LoggerMixin):
     async def _start_onboarding_flow(self, user_id: str, guild_id: str):
         """Start onboarding flow for new users."""
         try:
-            # Get Discord user and guild
+            # Create user profile first
             guild = self.bot.get_guild(int(guild_id))
             if not guild:
                 return
@@ -401,41 +408,36 @@ class UsersCog(commands.Cog, LoggerMixin):
                 user_id, guild_id, user.display_name
             )
             
-            # Send welcome message with onboarding
-            embed = discord.Embed(
-                title="🎮 Welcome to Game Night Bot!",
-                description=(
-                    f"Hi {user.mention}! I help organize game nights for your server.\n\n"
-                    f"**Get Started:**\n"
-                    f"• Use `/profile` to set up your profile\n"
-                    f"• Set your timezone with `/preferences timezone`\n"
-                    f"• Add your availability with `/preferences availability`\n"
-                    f"• Configure notifications with `/preferences notifications`\n\n"
-                    f"**Commands:**\n"
-                    f"• `/games add <game>` - Add games you're interested in\n"
-                    f"• `/games list` - See your game interests\n"
-                    f"• `/profile` - View your profile and stats\n"
-                ),
-                color=discord.Color.green()
-            )
-            
-            try:
-                await user.send(embed=embed)
-            except discord.Forbidden:
-                # Can't DM user, try to find a general channel
-                for channel in guild.text_channels:
-                    if channel.permissions_for(guild.me).send_messages:
-                        await channel.send(f"{user.mention}", embed=embed)
-                        break
-            
-            # Emit onboarding event
-            await self.event_bus.emit(
-                EventType.USER_ONBOARDED,
-                {"user_id": user_id, "guild_id": guild_id},
-                source="users_cog",
-                guild_id=guild_id,
-                user_id=user_id
-            )
+            # Use the enhanced onboarding system if available
+            if hasattr(self.bot, 'onboarding_manager'):
+                await self.bot.onboarding_manager.start_onboarding(user_id, guild_id)
+            else:
+                # Fallback to simple welcome message
+                embed = discord.Embed(
+                    title="🎮 Welcome to Game Night Bot!",
+                    description=(
+                        f"Hi {user.mention}! I help organize game nights for your server.\n\n"
+                        f"**Get Started:**\n"
+                        f"• Use `/profile` to set up your profile\n"
+                        f"• Set your timezone with `/timezone <your_timezone>`\n"
+                        f"• Add your availability with `/availability`\n"
+                        f"• Configure notifications with `/notifications`\n\n"
+                        f"**Commands:**\n"
+                        f"• `/games add <game>` - Add games you're interested in\n"
+                        f"• `/games list` - See your game interests\n"
+                        f"• `/help` - Get help with all commands\n"
+                    ),
+                    color=discord.Color.green()
+                )
+                
+                try:
+                    await user.send(embed=embed)
+                except discord.Forbidden:
+                    # Can't DM user, try to find a general channel
+                    for channel in guild.text_channels:
+                        if channel.permissions_for(guild.me).send_messages:
+                            await channel.send(f"{user.mention}", embed=embed)
+                            break
             
         except Exception as e:
             self.logger.error(f"Error in onboarding flow: {e}", exc_info=True)
@@ -468,10 +470,11 @@ class UsersCog(commands.Cog, LoggerMixin):
             
         except Exception as e:
             self.logger.error(f"Error displaying profile: {e}", exc_info=True)
-            await interaction.response.send_message(
-                "❌ An error occurred while loading your profile.",
-                ephemeral=True
-            )
+            feedback = self.feedback_system.from_exception(e, {
+                "operation": "profile_display",
+                "user_id": str(interaction.user.id)
+            })
+            await self.feedback_system.send_feedback(interaction, feedback)
     
     @commands.slash_command(
         name="stats", 

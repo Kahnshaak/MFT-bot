@@ -131,11 +131,13 @@ class GameNightBot(commands.Bot):
             from core.poll_edge_case_handler import PollEdgeCaseHandler
             from core.graceful_degradation_manager import GracefulDegradationManager, ServiceType
             from core.event_recovery_manager import EventRecoveryManager
+            from core.onboarding_system import OnboardingManager
             
             self.enhanced_error_handler = EnhancedErrorHandler(self.recovery_manager, self.event_bus)
             self.poll_edge_case_handler = PollEdgeCaseHandler(self.database, self.event_bus)
             self.degradation_manager = GracefulDegradationManager(self.event_bus)
             self.event_recovery_manager = EventRecoveryManager(self.database, self.event_bus)
+            self.onboarding_manager = OnboardingManager(self)
             
             # Register health checkers for graceful degradation
             self.degradation_manager.register_health_checker(
@@ -193,7 +195,10 @@ class GameNightBot(commands.Bot):
                 'cogs.timestamps',
                 'cogs.admin',
                 'cogs.recurring',
-                'cogs.monitoring'
+                'cogs.monitoring',
+                'cogs.help',
+                'cogs.undo',
+                'cogs.accessibility'
             ]
             
             for cog in cogs_to_load:

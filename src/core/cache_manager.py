@@ -4,7 +4,7 @@ Caching layer for frequently accessed data with TTL and invalidation support.
 
 import asyncio
 import time
-from typing import Dict, Any, Optional, Set, Callable, Union
+from typing import Dict, Any, Optional, Set, Callable, Union, List
 from dataclasses import dataclass, field
 from collections import defaultdict
 from enum import Enum
