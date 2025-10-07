@@ -43,6 +43,10 @@ from logging_config import (
     log_api_access
 )
 
+# Import analytics routes
+from api.analytics_routes import create_analytics_router
+from database.manager import DatabaseManager
+
 # Configure structured logging
 logger = setup_web_logging()
 
@@ -330,20 +334,29 @@ templates = Jinja2Templates(directory=str(templates_dir))
 
 # Global variables
 database = None
+database_manager = None
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize database connection and services on startup."""
-    global database
+    global database, database_manager
     try:
         # MongoDB connection for web dashboard
         client = AsyncIOMotorClient(settings.database_url)
         database = client.get_default_database()
         
+        # Initialize database manager for analytics
+        database_manager = DatabaseManager(settings.database_url)
+        await database_manager.connect()
+        
         # Test database connection
         await database.command("ping")
         logger.info("Web dashboard connected to database successfully")
+        
+        # Include analytics routes
+        analytics_router = create_analytics_router(database_manager)
+        app.include_router(analytics_router)
         
         # Log startup information
         logger.info("Game Night Bot Web Dashboard starting", 
@@ -358,10 +371,14 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up database connection and services on shutdown."""
-    global database
+    global database, database_manager
     
     # Close OAuth session
     await oauth_manager.close_session()
+    
+    # Close database manager
+    if database_manager is not None:
+        await database_manager.disconnect()
     
     # Close database connection
     if database is not None:
@@ -414,6 +431,38 @@ async def require_admin_permissions(current_user: UserSession = Depends(require_
             detail="Admin permissions required"
         )
     return current_user
+
+
+async def get_dashboard_stats() -> Dict[str, Any]:
+    """Get basic dashboard statistics."""
+    try:
+        if not database:
+            return {"error": "Database not available"}
+        
+        # Get basic counts
+        events_count = await database.events.count_documents({})
+        users_count = await database.users.count_documents({})
+        
+        # Get recent activity (last 7 days)
+        week_ago = datetime.utcnow() - timedelta(days=7)
+        recent_events = await database.events.count_documents({
+            "created_at": {"$gte": week_ago}
+        })
+        
+        return {
+            "total_events": events_count,
+            "total_users": users_count,
+            "recent_events": recent_events,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Failed to get dashboard stats", error=str(e))
+        return {
+            "total_events": 0,
+            "total_users": 0,
+            "recent_events": 0,
+            "error": "Failed to load statistics"
+        }
 
 
 # Authentication routes
@@ -575,6 +624,24 @@ async def dashboard_home(request: Request, current_user: Optional[UserSession] =
     except Exception as e:
         logger.error("Dashboard error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
+
+
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request, current_user: UserSession = Depends(require_authentication)):
+    """Analytics dashboard page."""
+    try:
+        # Generate CSRF token for forms
+        csrf_token = security_manager.generate_csrf_token()
+        
+        return templates.TemplateResponse("analytics.html", {
+            "request": request,
+            "title": "Analytics - Game Night Bot Dashboard",
+            "user": current_user,
+            "csrf_token": csrf_token
+        })
+    except Exception as e:
+        logger.error("Analytics page error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Analytics page error: {str(e)}")
 
 
 @app.get("/api/health")

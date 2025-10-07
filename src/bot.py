@@ -198,7 +198,8 @@ class GameNightBot(commands.Bot):
                 'cogs.monitoring',
                 'cogs.help',
                 'cogs.undo',
-                'cogs.accessibility'
+                'cogs.accessibility',
+                'cogs.analytics'
             ]
             
             for cog in cogs_to_load:
