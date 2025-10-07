@@ -5,9 +5,11 @@ Notification manager for scheduling and delivering reminders and alerts.
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set
+from collections import defaultdict
 import discord
 
 from core.event_bus import EventBus, EventType
+from core.batch_processor import NotificationBatchProcessor
 from models.notification import (
     Notification, NotificationChannel, NotificationType, NotificationStatus,
     NotificationTemplate, DEFAULT_TEMPLATES
@@ -34,6 +36,9 @@ class NotificationManager(LoggerMixin):
         self.processing_queue = asyncio.Queue()
         self.is_running = False
         
+        # Batch processing for notifications
+        self.batch_processor = NotificationBatchProcessor(self._send_notification_batch)
+        
         # Subscribe to relevant events
         self.event_bus.subscribe(EventType.EVENT_SCHEDULED, self._on_event_scheduled)
         self.event_bus.subscribe(EventType.EVENT_CANCELLED, self._on_event_cancelled)
@@ -48,6 +53,9 @@ class NotificationManager(LoggerMixin):
         
         self.is_running = True
         
+        # Start batch processor
+        await self.batch_processor.start()
+        
         # Start background tasks
         asyncio.create_task(self._notification_processor())
         asyncio.create_task(self._scheduled_notification_checker())
@@ -56,11 +64,14 @@ class NotificationManager(LoggerMixin):
         # Load pending notifications from database
         await self._load_pending_notifications()
         
-        self.logger.info("Notification manager started")
+        self.logger.info("Notification manager started with batch processing")
     
     async def stop(self):
         """Stop the notification manager."""
         self.is_running = False
+        
+        # Stop batch processor
+        await self.batch_processor.stop()
         
         # Cancel all scheduled tasks
         for task in self.scheduled_tasks.values():
@@ -766,3 +777,229 @@ class NotificationManager(LoggerMixin):
         """Handle user preference updates."""
         # Could reschedule notifications based on new preferences
         pass
+    
+    async def _send_notification_batch(self, notifications: List[Dict[str, Any]]) -> None:
+        """
+        Send a batch of notifications efficiently.
+        
+        Args:
+            notifications: List of notification data dictionaries
+        """
+        # Group notifications by guild and channel for efficient delivery
+        grouped_notifications = defaultdict(lambda: defaultdict(list))
+        
+        for notification_data in notifications:
+            guild_id = notification_data.get('guild_id')
+            channel_pref = notification_data.get('channel_preference', 'BOTH')
+            grouped_notifications[guild_id][channel_pref].append(notification_data)
+        
+        # Process each group
+        for guild_id, channel_groups in grouped_notifications.items():
+            guild = self.bot.get_guild(int(guild_id))
+            if not guild:
+                self.logger.warning(f"Guild {guild_id} not found for batch notifications")
+                continue
+            
+            for channel_pref, group_notifications in channel_groups.items():
+                try:
+                    if channel_pref in ['DM', 'BOTH']:
+                        await self._send_dm_batch(group_notifications)
+                    
+                    if channel_pref in ['SERVER', 'BOTH']:
+                        await self._send_server_batch(guild, group_notifications)
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to send notification batch: {e}")
+                    raise
+    
+    async def _send_dm_batch(self, notifications: List[Dict[str, Any]]) -> None:
+        """Send a batch of DM notifications."""
+        # Group by user to avoid duplicate DMs
+        user_notifications = defaultdict(list)
+        
+        for notification in notifications:
+            for user_id in notification.get('recipient_user_ids', []):
+                user_notifications[user_id].append(notification)
+        
+        # Send DMs concurrently (with rate limiting)
+        dm_tasks = []
+        for user_id, user_notifs in user_notifications.items():
+            task = asyncio.create_task(self._send_user_dm_batch(user_id, user_notifs))
+            dm_tasks.append(task)
+        
+        # Wait for all DMs to complete
+        await asyncio.gather(*dm_tasks, return_exceptions=True)
+    
+    async def _send_user_dm_batch(self, user_id: str, notifications: List[Dict[str, Any]]) -> None:
+        """Send multiple notifications to a single user via DM."""
+        try:
+            user = self.bot.get_user(int(user_id))
+            if not user:
+                user = await self.bot.fetch_user(int(user_id))
+            
+            if not user:
+                return
+            
+            # Combine notifications into a single message if possible
+            if len(notifications) == 1:
+                # Single notification
+                notification = notifications[0]
+                embed = discord.Embed(
+                    title=notification['title'],
+                    description=notification['message'],
+                    color=notification.get('embed_data', {}).get('color', 0x00ff00)
+                )
+                await user.send(embed=embed)
+            else:
+                # Multiple notifications - create summary
+                embed = discord.Embed(
+                    title=f"📢 {len(notifications)} Notifications",
+                    color=0x00ff00
+                )
+                
+                for i, notification in enumerate(notifications[:5]):  # Limit to 5 to avoid embed limits
+                    embed.add_field(
+                        name=notification['title'],
+                        value=notification['message'][:100] + ('...' if len(notification['message']) > 100 else ''),
+                        inline=False
+                    )
+                
+                if len(notifications) > 5:
+                    embed.add_field(
+                        name="Additional Notifications",
+                        value=f"... and {len(notifications) - 5} more notifications",
+                        inline=False
+                    )
+                
+                await user.send(embed=embed)
+                
+        except discord.Forbidden:
+            self.logger.debug(f"Cannot send DM to user {user_id} (DMs disabled)")
+        except Exception as e:
+            self.logger.error(f"Error sending DM batch to {user_id}: {e}")
+    
+    async def _send_server_batch(self, guild: discord.Guild, notifications: List[Dict[str, Any]]) -> None:
+        """Send a batch of server notifications."""
+        # Find appropriate channel
+        target_channel = None
+        
+        # Look for events or game-night channels first
+        for channel in guild.text_channels:
+            if channel.name.lower() in ['events', 'game-night', 'gamenight', 'announcements']:
+                target_channel = channel
+                break
+        
+        # Fallback to general or first available channel
+        if not target_channel:
+            for channel in guild.text_channels:
+                if channel.name.lower() == 'general':
+                    target_channel = channel
+                    break
+        
+        if not target_channel and guild.text_channels:
+            target_channel = guild.text_channels[0]
+        
+        if not target_channel or not target_channel.permissions_for(guild.me).send_messages:
+            return
+        
+        # Group notifications by type for better organization
+        notification_groups = defaultdict(list)
+        for notification in notifications:
+            notif_type = notification.get('notification_type', 'GENERAL')
+            notification_groups[notif_type].append(notification)
+        
+        # Send each group
+        for notif_type, group_notifications in notification_groups.items():
+            try:
+                await self._send_server_notification_group(target_channel, notif_type, group_notifications)
+            except Exception as e:
+                self.logger.error(f"Failed to send server notification group {notif_type}: {e}")
+    
+    async def _send_server_notification_group(
+        self, 
+        channel: discord.TextChannel, 
+        notification_type: str, 
+        notifications: List[Dict[str, Any]]
+    ) -> None:
+        """Send a group of notifications of the same type to a server channel."""
+        if len(notifications) == 1:
+            # Single notification
+            notification = notifications[0]
+            
+            # Collect all recipients for mentions
+            all_recipients = set()
+            for user_id in notification.get('recipient_user_ids', []):
+                all_recipients.add(user_id)
+            
+            # Create mentions (limit to avoid spam)
+            mentions = []
+            for user_id in list(all_recipients)[:10]:  # Limit to 10 mentions
+                member = channel.guild.get_member(int(user_id))
+                if member:
+                    mentions.append(member.mention)
+            
+            content = " ".join(mentions) if mentions else ""
+            
+            embed = discord.Embed(
+                title=notification['title'],
+                description=notification['message'],
+                color=notification.get('embed_data', {}).get('color', 0x00ff00)
+            )
+            
+            await channel.send(content=content, embed=embed)
+        
+        else:
+            # Multiple notifications of same type
+            embed = discord.Embed(
+                title=f"📢 {notification_type.replace('_', ' ').title()} Updates",
+                color=0x00ff00
+            )
+            
+            # Collect all unique recipients
+            all_recipients = set()
+            for notification in notifications:
+                for user_id in notification.get('recipient_user_ids', []):
+                    all_recipients.add(user_id)
+            
+            # Add notification summaries
+            for i, notification in enumerate(notifications[:5]):  # Limit to 5
+                embed.add_field(
+                    name=notification['title'],
+                    value=notification['message'][:100] + ('...' if len(notification['message']) > 100 else ''),
+                    inline=False
+                )
+            
+            if len(notifications) > 5:
+                embed.add_field(
+                    name="Additional Updates",
+                    value=f"... and {len(notifications) - 5} more updates",
+                    inline=False
+                )
+            
+            # Create mentions (limit to avoid spam)
+            mentions = []
+            for user_id in list(all_recipients)[:10]:  # Limit to 10 mentions
+                member = channel.guild.get_member(int(user_id))
+                if member:
+                    mentions.append(member.mention)
+            
+            content = " ".join(mentions) if mentions else ""
+            
+            await channel.send(content=content, embed=embed)
+    
+    async def send_batch_notification(
+        self,
+        notifications: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Send multiple notifications using batch processing.
+        
+        Args:
+            notifications: List of notification dictionaries
+        """
+        for notification in notifications:
+            await self.batch_processor.add_item(notification)
+    
+    def get_batch_stats(self) -> Dict[str, Any]:
+        """Get batch processing statistics."""
+        return self.batch_processor.get_stats()

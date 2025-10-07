@@ -33,6 +33,7 @@ from core.alerting_system import AlertingSystem, DiscordAlertChannel, LogAlertCh
 from core.performance_monitor import PerformanceMonitor
 from core.system_status_dashboard import SystemStatusDashboard
 from core.log_aggregator import LogAggregator
+from core.performance_integration import PerformanceIntegration
 from database.manager import DatabaseManager
 from database.migrations import initialize_database
 from utils.logging_config import setup_logging
@@ -78,6 +79,9 @@ class GameNightBot(commands.Bot):
         self.system_dashboard: Optional[SystemStatusDashboard] = None
         self.log_aggregator: Optional[LogAggregator] = None
         
+        # Performance optimization integration
+        self.performance_integration: Optional[PerformanceIntegration] = None
+        
         # Set up logging
         self.logger = logging.getLogger(__name__)
         
@@ -92,8 +96,15 @@ class GameNightBot(commands.Bot):
         try:
             self.logger.info("Starting bot setup...")
             
-            # Initialize database connection
-            self.database = DatabaseManager(self.settings.database_url)
+            # Initialize performance integration first
+            self.performance_integration = PerformanceIntegration(self)
+            await self.performance_integration.initialize()
+            
+            # Initialize database connection with performance optimizations
+            self.database = DatabaseManager(
+                self.settings.database_url,
+                cache_manager=self.performance_integration.cache_manager
+            )
             await self.database.connect()
             
             # Initialize database schema and run migrations
@@ -638,6 +649,11 @@ async def shutdown_bot(bot: Optional[GameNightBot]) -> None:
             
             if hasattr(bot, 'system_dashboard') and bot.system_dashboard:
                 await bot.system_dashboard.stop_auto_refresh()
+            
+            # Shutdown performance integration
+            if hasattr(bot, 'performance_integration') and bot.performance_integration:
+                await bot.performance_integration.shutdown()
+                logger.info("Performance integration shutdown complete")
             
             # Close database connection
             if hasattr(bot, 'database') and bot.database:

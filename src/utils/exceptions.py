@@ -345,3 +345,17 @@ class UserDepartedError(GameNightBotException):
             user_message="A user left the server during this operation. The system has been updated accordingly.",
             **kwargs
         )
+
+
+class RateLimitExceededError(GameNightBotException):
+    """Raised when rate limit is exceeded."""
+    
+    def __init__(self, message: str, metadata: Dict[str, Any] = None, **kwargs):
+        super().__init__(
+            message,
+            error_code=ErrorCode.RATE_LIMITED,
+            details=metadata or {},
+            user_message="You're performing actions too quickly. Please slow down and try again.",
+            **kwargs
+        )
+        self.metadata = metadata or {}
