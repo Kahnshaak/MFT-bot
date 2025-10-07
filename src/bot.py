@@ -34,6 +34,8 @@ from core.performance_monitor import PerformanceMonitor
 from core.system_status_dashboard import SystemStatusDashboard
 from core.log_aggregator import LogAggregator
 from core.performance_integration import PerformanceIntegration
+from core.privacy_manager import PrivacyManager
+from core.data_retention import DataRetentionManager
 from database.manager import DatabaseManager
 from database.migrations import initialize_database
 from utils.logging_config import setup_logging
@@ -81,6 +83,10 @@ class GameNightBot(commands.Bot):
         
         # Performance optimization integration
         self.performance_integration: Optional[PerformanceIntegration] = None
+        
+        # Privacy and compliance components
+        self.privacy_manager: Optional[PrivacyManager] = None
+        self.data_retention_manager: Optional[DataRetentionManager] = None
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
@@ -138,6 +144,13 @@ class GameNightBot(commands.Bot):
             self.degradation_manager = GracefulDegradationManager(self.event_bus)
             self.event_recovery_manager = EventRecoveryManager(self.database, self.event_bus)
             self.onboarding_manager = OnboardingManager(self)
+            
+            # Initialize privacy and compliance systems
+            self.privacy_manager = PrivacyManager(self.database, self.audit_logger)
+            self.data_retention_manager = DataRetentionManager(self.database, self.audit_logger)
+            
+            # Initialize default data retention policies
+            await self.data_retention_manager.initialize_default_policies()
             
             # Register health checkers for graceful degradation
             self.degradation_manager.register_health_checker(
@@ -199,7 +212,9 @@ class GameNightBot(commands.Bot):
                 'cogs.help',
                 'cogs.undo',
                 'cogs.accessibility',
-                'cogs.analytics'
+                'cogs.analytics',
+                'cogs.privacy',
+                'cogs.admin_privacy'
             ]
             
             for cog in cogs_to_load:
