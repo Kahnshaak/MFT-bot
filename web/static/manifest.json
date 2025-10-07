@@ -1,0 +1,122 @@
+{
+  "name": "Game Night Bot Dashboard",
+  "short_name": "GameNight",
+  "description": "Manage Discord game night events and communities",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#4e73df",
+  "theme_color": "#4e73df",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["games", "social", "productivity"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Create Event",
+      "short_name": "New Event",
+      "description": "Create a new game night event",
+      "url": "/events/create",
+      "icons": [
+        {
+          "src": "/static/icons/shortcut-create.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "View Analytics",
+      "short_name": "Analytics",
+      "description": "View game night analytics",
+      "url": "/analytics",
+      "icons": [
+        {
+          "src": "/static/icons/shortcut-analytics.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "short_name": "Users",
+      "description": "Manage users and preferences",
+      "url": "/users",
+      "icons": [
+        {
+          "src": "/static/icons/shortcut-users.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/screenshots/desktop-dashboard.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dashboard view on desktop"
+    },
+    {
+      "src": "/static/screenshots/mobile-dashboard.png",
+      "sizes": "375x667",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dashboard view on mobile"
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "edge_side_panel": {
+    "preferred_width": 400
+  }
+}

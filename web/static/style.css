@@ -216,24 +216,34 @@
     
     .card {
         margin-bottom: 1rem;
-        border-radius: var(--border-radius);
+        border-radius: 1rem;
+        box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
     }
     
     .btn {
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        border-radius: 0.75rem;
+        min-height: 44px; /* iOS touch target */
+        font-weight: 600;
     }
     
     .table-responsive {
         font-size: 0.8rem;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
     }
     
     .modal-dialog {
         margin: 0.5rem;
+        border-radius: 1rem;
     }
     
     .toast {
         font-size: 0.875rem;
+        border-radius: 0.75rem;
+        box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.15);
     }
     
     /* Stack form elements on mobile */
@@ -241,6 +251,169 @@
     .row > .col-md-4,
     .row > .col-md-3 {
         margin-bottom: 1rem;
+    }
+    
+    /* Mobile-specific form styling */
+    .form-control,
+    .form-select {
+        font-size: 16px; /* Prevents zoom on iOS */
+        padding: 0.75rem 1rem;
+        border-radius: 0.75rem;
+        border: 2px solid #e3e6f0;
+        min-height: 44px;
+    }
+    
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    }
+    
+    /* Mobile navigation improvements */
+    .navbar {
+        padding: 0.5rem 1rem;
+    }
+    
+    .navbar-brand {
+        font-size: 1.1rem;
+        font-weight: bold;
+    }
+    
+    .navbar-toggler {
+        padding: 0.25rem 0.5rem;
+        font-size: 1.25rem;
+        border: none;
+        border-radius: 0.5rem;
+    }
+    
+    /* Mobile card improvements */
+    .stat-card {
+        text-align: center;
+        padding: 1.5rem 1rem;
+        border-radius: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .stat-card .card-body {
+        padding: 1rem;
+    }
+    
+    .stat-card .h4 {
+        font-size: 1.75rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-card .text-xs {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05rem;
+        font-weight: 600;
+    }
+    
+    /* Mobile dropdown improvements */
+    .dropdown-menu {
+        border-radius: 1rem;
+        border: none;
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.2);
+        margin-top: 0.5rem;
+        min-width: 200px;
+    }
+    
+    .dropdown-item {
+        padding: 0.75rem 1.25rem;
+        font-size: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.25rem 0.5rem;
+    }
+    
+    .dropdown-item:hover,
+    .dropdown-item:focus {
+        background-color: var(--primary-color);
+        color: white;
+        transform: translateX(0.25rem);
+    }
+    
+    /* Mobile breadcrumb */
+    .breadcrumb {
+        background: transparent;
+        padding: 0.5rem 0;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .breadcrumb-item + .breadcrumb-item::before {
+        content: "›";
+        font-weight: bold;
+        color: var(--secondary-color);
+    }
+    
+    /* Mobile pagination */
+    .pagination {
+        justify-content: center;
+        margin-bottom: 1rem;
+    }
+    
+    .page-link {
+        padding: 0.5rem 0.75rem;
+        margin: 0 0.125rem;
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+    }
+    
+    .page-link:hover {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        color: white;
+        transform: translateY(-1px);
+    }
+    
+    /* Mobile alert improvements */
+    .alert {
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1rem;
+        border: none;
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .alert-dismissible .btn-close {
+        padding: 1rem;
+        font-size: 1.25rem;
+    }
+    
+    /* Mobile list group improvements */
+    .list-group-item {
+        padding: 1rem 1.25rem;
+        border-radius: 0.75rem;
+        margin-bottom: 0.5rem;
+        border: 1px solid #dee2e6;
+        font-size: 1rem;
+    }
+    
+    .list-group-item:hover {
+        background-color: #f8f9fa;
+        transform: translateX(0.5rem);
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Mobile progress bar improvements */
+    .progress {
+        height: 1rem;
+        border-radius: 0.5rem;
+        overflow: hidden;
+        box-shadow: inset 0 0.125rem 0.25rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .progress-bar {
+        border-radius: 0.5rem;
+        transition: width 0.6s ease;
     }
 }
 
@@ -703,4 +876,428 @@
 
 .transition {
     transition: var(--transition) !important;
+}
+/* P
+WA-specific styles */
+.pwa-mode {
+    /* Hide elements that don't make sense in PWA mode */
+}
+
+.pwa-mode .external-link-icon {
+    display: none;
+}
+
+/* PWA install button */
+#pwa-install-btn {
+    animation: pulse 2s infinite;
+    box-shadow: 0 0.25rem 0.75rem rgba(78, 115, 223, 0.3);
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Offline indicator */
+.offline-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(90deg, #f6c23e, #e74a3b);
+    color: white;
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    z-index: 9999;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+}
+
+.offline-indicator.show {
+    transform: translateY(0);
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    /* Touch device specific styles */
+    .btn:hover {
+        transform: none;
+    }
+    
+    .btn:active {
+        transform: scale(0.95);
+        transition: transform 0.1s ease;
+    }
+    
+    .card:hover {
+        transform: none;
+    }
+    
+    .nav-link:hover {
+        background-color: transparent;
+    }
+    
+    .nav-link:active {
+        background-color: rgba(78, 115, 223, 0.1);
+    }
+    
+    /* Larger touch targets */
+    .btn,
+    .nav-link,
+    .dropdown-item,
+    .page-link {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Remove hover effects that don't work on touch */
+    .stat-card:hover {
+        transform: none;
+        box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    }
+}
+
+/* Landscape orientation optimizations */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    .navbar {
+        padding: 0.25rem 1rem;
+    }
+    
+    .main-content {
+        padding-top: 0.5rem;
+    }
+    
+    .card {
+        margin-bottom: 0.75rem;
+    }
+    
+    .stat-card {
+        padding: 0.75rem;
+    }
+    
+    .modal-dialog {
+        margin: 0.25rem;
+    }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+    /* iOS Safari */
+    .form-control,
+    .form-select {
+        font-size: 16px; /* Prevents zoom */
+        -webkit-appearance: none;
+        border-radius: 0.75rem;
+    }
+    
+    .btn {
+        -webkit-appearance: none;
+        border-radius: 0.75rem;
+    }
+    
+    /* Fix for iOS Safari viewport height */
+    .min-vh-100 {
+        min-height: -webkit-fill-available;
+    }
+    
+    /* Fix for iOS Safari bottom safe area */
+    .footer {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    
+    .navbar {
+        padding-top: env(safe-area-inset-top);
+    }
+}
+
+/* Android Chrome specific fixes */
+@media screen and (-webkit-min-device-pixel-ratio: 0) and (min-resolution: 0.001dpcm) {
+    /* Android Chrome */
+    .form-control:focus,
+    .form-select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .card {
+        box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn {
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .dropdown-menu {
+        box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.15);
+    }
+}
+
+/* Foldable device support */
+@media (spanning: single-fold-vertical) {
+    .main-content {
+        display: flex;
+        flex-direction: row;
+    }
+    
+    .main-content > * {
+        flex: 1;
+        margin-right: 1rem;
+    }
+    
+    .main-content > *:last-child {
+        margin-right: 0;
+    }
+}
+
+/* Performance optimizations for mobile */
+@media (max-width: 767.98px) {
+    /* Reduce animations on mobile for better performance */
+    * {
+        animation-duration: 0.2s !important;
+        transition-duration: 0.2s !important;
+    }
+    
+    /* Optimize scrolling */
+    .main-content {
+        -webkit-overflow-scrolling: touch;
+        overflow-scrolling: touch;
+    }
+    
+    /* Reduce box shadows for better performance */
+    .card,
+    .btn,
+    .dropdown-menu {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+}
+
+/* Accessibility improvements for mobile */
+@media (max-width: 767.98px) {
+    /* Larger focus indicators */
+    .btn:focus,
+    .form-control:focus,
+    .form-select:focus,
+    .nav-link:focus {
+        outline: 3px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+    
+    /* Better contrast for small screens */
+    .text-muted {
+        color: #6c757d !important;
+    }
+    
+    /* Larger text for better readability */
+    .small,
+    .text-xs {
+        font-size: 0.875rem !important;
+    }
+    
+    /* Better spacing for touch targets */
+    .nav-link,
+    .dropdown-item,
+    .btn {
+        margin-bottom: 0.25rem;
+    }
+}
+
+/* Dark mode enhancements for mobile */
+@media (prefers-color-scheme: dark) and (max-width: 767.98px) {
+    body {
+        background-color: #000;
+    }
+    
+    .card {
+        background-color: #1a1a1a;
+        border-color: #333;
+    }
+    
+    .navbar {
+        background-color: #1a1a1a !important;
+    }
+    
+    .form-control,
+    .form-select {
+        background-color: #1a1a1a;
+        border-color: #333;
+        color: #fff;
+    }
+    
+    .dropdown-menu {
+        background-color: #1a1a1a;
+        border-color: #333;
+    }
+    
+    .dropdown-item {
+        color: #fff;
+    }
+    
+    .dropdown-item:hover,
+    .dropdown-item:focus {
+        background-color: var(--primary-color);
+    }
+}
+
+/* Loading states for mobile */
+.mobile-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.mobile-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2rem;
+    height: 2rem;
+    margin: -1rem 0 0 -1rem;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    animation: mobile-spin 1s linear infinite;
+}
+
+@keyframes mobile-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Mobile-specific utility classes */
+.mobile-only {
+    display: none;
+}
+
+.desktop-only {
+    display: block;
+}
+
+@media (max-width: 767.98px) {
+    .mobile-only {
+        display: block;
+    }
+    
+    .desktop-only {
+        display: none;
+    }
+    
+    .mobile-center {
+        text-align: center;
+    }
+    
+    .mobile-full-width {
+        width: 100%;
+    }
+    
+    .mobile-stack > * {
+        display: block;
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    .mobile-hide {
+        display: none;
+    }
+}
+
+/* Swipe gesture indicators */
+.swipe-indicator {
+    position: relative;
+    overflow: hidden;
+}
+
+.swipe-indicator::after {
+    content: '← Swipe →';
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    animation: swipe-hint 3s ease-in-out infinite;
+}
+
+@keyframes swipe-hint {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 0.3; }
+}
+
+/* Pull-to-refresh indicator */
+.pull-to-refresh {
+    position: relative;
+    padding-top: 3rem;
+    margin-top: -3rem;
+    transition: margin-top 0.3s ease;
+}
+
+.pull-to-refresh.pulling {
+    margin-top: 0;
+}
+
+.pull-to-refresh::before {
+    content: '↓ Pull to refresh';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border-radius: 0 0 0.5rem 0.5rem;
+    font-size: 0.875rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.pull-to-refresh.pulling::before {
+    opacity: 1;
+}
+
+/* Mobile-specific animations */
+@media (max-width: 767.98px) {
+    .slide-in-mobile {
+        animation: slideInMobile 0.3s ease-out;
+    }
+    
+    @keyframes slideInMobile {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    .fade-in-mobile {
+        animation: fadeInMobile 0.3s ease-out;
+    }
+    
+    @keyframes fadeInMobile {
+        from {
+            opacity: 0;
+            transform: translateY(1rem);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 }

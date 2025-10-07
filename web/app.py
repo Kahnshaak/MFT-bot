@@ -644,6 +644,68 @@ async def analytics_page(request: Request, current_user: UserSession = Depends(r
         raise HTTPException(status_code=500, detail=f"Analytics page error: {str(e)}")
 
 
+@app.post("/api/notifications/subscribe")
+async def subscribe_to_notifications(request: Request, current_user: UserSession = Depends(require_authentication)):
+    """Subscribe user to push notifications."""
+    try:
+        subscription_data = await request.json()
+        
+        # Store subscription in database
+        if database:
+            await database.push_subscriptions.update_one(
+                {"user_id": current_user.user_id},
+                {
+                    "$set": {
+                        "user_id": current_user.user_id,
+                        "subscription": subscription_data,
+                        "created_at": datetime.utcnow(),
+                        "active": True
+                    }
+                },
+                upsert=True
+            )
+        
+        logger.info("Push notification subscription created", user_id=current_user.user_id)
+        
+        return {
+            "success": True,
+            "message": "Successfully subscribed to notifications"
+        }
+        
+    except Exception as e:
+        logger.error("Push notification subscription failed", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail="Failed to subscribe to notifications")
+
+
+@app.delete("/api/notifications/unsubscribe")
+async def unsubscribe_from_notifications(current_user: UserSession = Depends(require_authentication)):
+    """Unsubscribe user from push notifications."""
+    try:
+        if database:
+            await database.push_subscriptions.update_one(
+                {"user_id": current_user.user_id},
+                {"$set": {"active": False, "unsubscribed_at": datetime.utcnow()}}
+            )
+        
+        logger.info("Push notification unsubscribed", user_id=current_user.user_id)
+        
+        return {
+            "success": True,
+            "message": "Successfully unsubscribed from notifications"
+        }
+        
+    except Exception as e:
+        logger.error("Push notification unsubscribe failed", error=str(e), user_id=current_user.user_id)
+        raise HTTPException(status_code=500, detail="Failed to unsubscribe from notifications")
+
+
+@app.get("/api/csrf-token")
+async def get_csrf_token(current_user: UserSession = Depends(require_authentication)):
+    """Get CSRF token for authenticated requests."""
+    csrf_token = security_manager.generate_csrf_token()
+    return {"csrf_token": csrf_token}
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint - no authentication required."""

@@ -1,0 +1,48 @@
+{
+  "test_summary": {
+    "timestamp": "2025-10-06 20:29:11",
+    "total_test_categories": 4,
+    "passed_categories": 3,
+    "failed_categories": 1
+  },
+  "results": {
+    "discord_ui": {
+      "view_creation_time": 1.1205673217773438e-05,
+      "view_timeout": 300,
+      "button_creation_time": 1.5735626220703125e-05,
+      "button_has_emoji": true,
+      "select_creation_time": 7.867813110351562e-06,
+      "select_options_limited": true,
+      "poll_creation_time": 6.151199340820312e-05,
+      "poll_has_management_buttons": true,
+      "embed_creation_time": 4.291534423828125e-06,
+      "embed_has_mobile_footer": true
+    },
+    "web_dashboard": {
+      "error": "Cannot connect to host localhost:8000 ssl:default [Connect call failed ('127.0.0.1', 8000)]"
+    },
+    "pwa_features": {
+      "service_worker_exists": true,
+      "manifest_exists": true,
+      "mobile_enhancements_exists": true,
+      "manifest_has_name": true,
+      "manifest_has_icons": true,
+      "manifest_has_start_url": true,
+      "manifest_has_display": true,
+      "manifest_has_shortcuts": true,
+      "sw_has_install_handler": true,
+      "sw_has_fetch_handler": true,
+      "sw_has_push_handler": true,
+      "sw_has_offline_support": true
+    },
+    "performance": {
+      "avg_component_creation_time": 7.777214050292968e-06,
+      "max_component_creation_time": 2.3365020751953125e-05,
+      "min_component_creation_time": 6.67572021484375e-06,
+      "total_tests": 100,
+      "memory_usage_mb": 55.87109375,
+      "cpu_percent": 0.0
+    }
+  },
+  "recommendations": []
+}

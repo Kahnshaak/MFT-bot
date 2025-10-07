@@ -2,9 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <meta name="description" content="Game Night Bot Dashboard - Manage Discord game night events and communities">
     <meta name="theme-color" content="#4e73df">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="GameNight">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="GameNight">
+    <meta name="msapplication-TileColor" content="#4e73df">
+    <meta name="msapplication-config" content="/static/browserconfig.xml">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <!-- Favicons and Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <link rel="mask-icon" href="/static/icons/safari-pinned-tab.svg" color="#4e73df">
+    
     <title>{% block title %}Game Night Bot Dashboard{% endblock %}</title>
     
     <!-- Preconnect to external domains for performance -->
@@ -91,7 +108,7 @@
             top: 0;
         }
         
-        /* Mobile optimizations */
+        /* Enhanced Mobile optimizations */
         @media (max-width: 767.98px) {
             .sidebar {
                 position: fixed;
@@ -110,13 +127,14 @@
             
             .main-content {
                 margin-left: 0 !important;
-                padding-left: 15px;
-                padding-right: 15px;
+                padding-left: 10px;
+                padding-right: 10px;
             }
             
             .navbar-toggler {
                 border: none;
                 padding: 0.25rem 0.5rem;
+                font-size: 1.25rem;
             }
             
             .navbar-toggler:focus {
@@ -126,20 +144,177 @@
             /* Mobile-friendly cards */
             .card {
                 margin-bottom: 1rem;
+                border-radius: 0.75rem;
+                box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
             }
             
             .stat-card {
                 margin-bottom: 1rem;
+                padding: 1rem;
+                text-align: center;
+            }
+            
+            .stat-card .card-body {
+                padding: 1rem 0.75rem;
             }
             
             /* Responsive tables */
             .table-responsive {
-                font-size: 0.875rem;
+                font-size: 0.8rem;
+                border-radius: 0.5rem;
+                overflow: hidden;
+            }
+            
+            .table th,
+            .table td {
+                padding: 0.5rem 0.25rem;
+                white-space: nowrap;
             }
             
             /* Mobile navigation improvements */
             .navbar-nav .nav-link {
                 padding: 0.75rem 1rem;
+                font-size: 1rem;
+                display: flex;
+                align-items: center;
+            }
+            
+            .navbar-nav .nav-link i {
+                margin-right: 0.5rem;
+                width: 1.25rem;
+                text-align: center;
+            }
+            
+            /* Mobile form improvements */
+            .form-control,
+            .form-select {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 0.75rem;
+                border-radius: 0.5rem;
+            }
+            
+            .btn {
+                padding: 0.75rem 1.5rem;
+                font-size: 1rem;
+                border-radius: 0.5rem;
+                min-height: 44px; /* Touch target size */
+            }
+            
+            /* Mobile modal improvements */
+            .modal-dialog {
+                margin: 0.5rem;
+                max-width: calc(100vw - 1rem);
+            }
+            
+            .modal-content {
+                border-radius: 1rem;
+            }
+            
+            .modal-header {
+                padding: 1rem;
+                border-bottom: 1px solid #dee2e6;
+            }
+            
+            .modal-body {
+                padding: 1rem;
+            }
+            
+            .modal-footer {
+                padding: 1rem;
+                border-top: 1px solid #dee2e6;
+            }
+            
+            /* Mobile dropdown improvements */
+            .dropdown-menu {
+                border-radius: 0.75rem;
+                box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+                border: none;
+                margin-top: 0.5rem;
+            }
+            
+            .dropdown-item {
+                padding: 0.75rem 1rem;
+                font-size: 1rem;
+            }
+            
+            /* Mobile toast improvements */
+            .toast {
+                border-radius: 0.75rem;
+                box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+            }
+            
+            /* Mobile breadcrumb */
+            .breadcrumb {
+                font-size: 0.875rem;
+                padding: 0.5rem 0;
+            }
+            
+            /* Mobile pagination */
+            .pagination {
+                justify-content: center;
+            }
+            
+            .page-link {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.875rem;
+                min-width: 44px;
+                min-height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+        
+        /* Tablet optimizations */
+        @media (min-width: 768px) and (max-width: 991.98px) {
+            .main-content {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            
+            .stat-card {
+                margin-bottom: 1.5rem;
+            }
+            
+            .card {
+                margin-bottom: 1.5rem;
+            }
+        }
+        
+        /* Large mobile/small tablet */
+        @media (max-width: 575.98px) {
+            .container-fluid {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            
+            .navbar-brand {
+                font-size: 1.1rem;
+            }
+            
+            .main-content {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            
+            /* Stack columns on small screens */
+            .row > [class*="col-"] {
+                margin-bottom: 1rem;
+            }
+            
+            /* Full width buttons on small screens */
+            .btn-group-responsive .btn {
+                width: 100%;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Compact stat cards */
+            .stat-card .h4 {
+                font-size: 1.5rem;
+            }
+            
+            .stat-card .text-xs {
+                font-size: 0.7rem;
             }
         }
         
@@ -517,6 +692,9 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
+    <!-- Mobile Enhancements -->
+    <script src="/static/mobile-enhancements.js"></script>
+    
     <!-- Enhanced JavaScript with accessibility and mobile support -->
     <script>
         // Global CSRF token for API requests
@@ -709,17 +887,183 @@
             });
         }
         
-        // Service Worker registration for offline support (future enhancement)
-        if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        // Enhanced PWA and Service Worker functionality
+        let deferredPrompt;
+        let isStandalone = false;
+        
+        // Check if running as PWA
+        if (window.matchMedia('(display-mode: standalone)').matches || 
+            window.navigator.standalone === true) {
+            isStandalone = true;
+            document.body.classList.add('pwa-mode');
+        }
+        
+        // Service Worker registration with update handling
+        if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/static/sw.js')
                     .then(function(registration) {
                         console.log('ServiceWorker registration successful');
+                        
+                        // Check for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    showUpdateAvailable();
+                                }
+                            });
+                        });
                     })
                     .catch(function(err) {
-                        console.log('ServiceWorker registration failed');
+                        console.log('ServiceWorker registration failed:', err);
                     });
             });
+        }
+        
+        // PWA install prompt handling
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            showInstallButton();
+        });
+        
+        // Handle PWA install
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted PWA install');
+                        hideInstallButton();
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+        
+        function showInstallButton() {
+            // Create install button if not in standalone mode
+            if (!isStandalone && !document.getElementById('pwa-install-btn')) {
+                const installBtn = document.createElement('button');
+                installBtn.id = 'pwa-install-btn';
+                installBtn.className = 'btn btn-primary btn-sm position-fixed';
+                installBtn.style.cssText = 'bottom: 20px; right: 20px; z-index: 1050; border-radius: 50px; padding: 0.5rem 1rem;';
+                installBtn.innerHTML = '<i class="bi bi-download"></i> Install App';
+                installBtn.onclick = installPWA;
+                document.body.appendChild(installBtn);
+                
+                // Auto-hide after 10 seconds
+                setTimeout(() => {
+                    if (installBtn.parentNode) {
+                        installBtn.style.opacity = '0.7';
+                    }
+                }, 10000);
+            }
+        }
+        
+        function hideInstallButton() {
+            const installBtn = document.getElementById('pwa-install-btn');
+            if (installBtn) {
+                installBtn.remove();
+            }
+        }
+        
+        function showUpdateAvailable() {
+            showToast('A new version is available! Refresh to update.', 'info', 10000);
+        }
+        
+        // Push notification support
+        function requestNotificationPermission() {
+            if ('Notification' in window && 'serviceWorker' in navigator) {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log('Notification permission granted');
+                        subscribeToNotifications();
+                    }
+                });
+            }
+        }
+        
+        async function subscribeToNotifications() {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array('YOUR_VAPID_PUBLIC_KEY') // Replace with actual key
+                });
+                
+                // Send subscription to server
+                await fetch('/api/notifications/subscribe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify(subscription)
+                });
+                
+                console.log('Push notification subscription successful');
+            } catch (error) {
+                console.error('Push notification subscription failed:', error);
+            }
+        }
+        
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+                .replace(/-/g, '+')
+                .replace(/_/g, '/');
+            
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+        
+        // Mobile-specific enhancements
+        function initMobileEnhancements() {
+            // Prevent zoom on input focus (iOS)
+            const inputs = document.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                if (input.style.fontSize === '' || parseFloat(input.style.fontSize) < 16) {
+                    input.style.fontSize = '16px';
+                }
+            });
+            
+            // Add touch feedback to buttons
+            const buttons = document.querySelectorAll('.btn, .nav-link, .dropdown-item');
+            buttons.forEach(button => {
+                button.addEventListener('touchstart', function() {
+                    this.style.opacity = '0.7';
+                });
+                button.addEventListener('touchend', function() {
+                    this.style.opacity = '';
+                });
+            });
+            
+            // Improve scroll performance
+            document.addEventListener('touchstart', function() {}, { passive: true });
+            document.addEventListener('touchmove', function() {}, { passive: true });
+            
+            // Handle orientation changes
+            window.addEventListener('orientationchange', function() {
+                setTimeout(() => {
+                    // Recalculate viewport height
+                    document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+                }, 100);
+            });
+            
+            // Set initial viewport height
+            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+        }
+        
+        // Initialize mobile enhancements on load
+        if (window.innerWidth <= 768) {
+            document.addEventListener('DOMContentLoaded', initMobileEnhancements);
         }
         
         // Initialize tooltips and popovers
