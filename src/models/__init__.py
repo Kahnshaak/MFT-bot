@@ -9,27 +9,27 @@ from .base import BaseDocument, ValidationMixin, TimestampMixin, PyObjectId
 
 # Event models
 from .event import (
-    Event, EventState, EventSchedule, Poll, PollOption, PollType,
-    RSVPResponse, RSVPStatus
+    Event, EventState, Poll, RSVPResponse, RSVPStatus
 )
 
 # User models
 from .user import (
-    User, UserStatistics, GameInterest, NotificationPreferences,
-    AvailabilitySlot, NotificationChannel, NotificationTiming, DayOfWeek
+    User, GameInterest
 )
 
 # Recurring schedule models
 from .recurring import (
-    RecurringSchedule, ScheduleTrigger, EventTemplate, ExecutionHistory,
-    TriggerType, ScheduleStatus, ExecutionStatus
+    RecurringSchedule, ScheduleStatus
 )
 
 # Guild configuration models
 from .guild import (
-    GuildConfig, RoleMapping, NotificationChannel as GuildNotificationChannel,
-    EventDefaults, FeatureFlags, GuildStatistics,
-    PermissionLevel, NotificationChannelType
+    GuildConfig
+)
+
+# Notification models
+from .notification import (
+    Notification, NotificationType, NotificationStatus
 )
 
 # Repositories
@@ -43,21 +43,19 @@ __all__ = [
     'BaseDocument', 'ValidationMixin', 'TimestampMixin', 'PyObjectId',
     
     # Event models
-    'Event', 'EventState', 'EventSchedule', 'Poll', 'PollOption', 'PollType',
-    'RSVPResponse', 'RSVPStatus',
+    'Event', 'EventState', 'Poll', 'RSVPResponse', 'RSVPStatus',
     
     # User models
-    'User', 'UserStatistics', 'GameInterest', 'NotificationPreferences',
-    'AvailabilitySlot', 'NotificationChannel', 'NotificationTiming', 'DayOfWeek',
+    'User', 'GameInterest',
     
     # Recurring schedule models
-    'RecurringSchedule', 'ScheduleTrigger', 'EventTemplate', 'ExecutionHistory',
-    'TriggerType', 'ScheduleStatus', 'ExecutionStatus',
+    'RecurringSchedule', 'ScheduleStatus',
     
     # Guild configuration models
-    'GuildConfig', 'RoleMapping', 'GuildNotificationChannel',
-    'EventDefaults', 'FeatureFlags', 'GuildStatistics',
-    'PermissionLevel', 'NotificationChannelType',
+    'GuildConfig',
+    
+    # Notification models
+    'Notification', 'NotificationType', 'NotificationStatus',
     
     # Repositories
     'BaseRepository', 'EventRepository', 'UserRepository',

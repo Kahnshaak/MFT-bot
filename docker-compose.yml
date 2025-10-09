@@ -32,33 +32,20 @@ services:
     env_file:
       - .env
     environment:
-      # Override database URL for container networking
       - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
-      # Ensure these are set from .env file, with fallbacks for safety
       - DISCORD_TOKEN=${DISCORD_TOKEN:?DISCORD_TOKEN is required}
       - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:?DISCORD_CLIENT_ID is required}
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?DISCORD_CLIENT_SECRET is required}
       - JWT_SECRET=${JWT_SECRET:-please_change_this_jwt_secret_in_production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - WEB_HOST=${WEB_HOST:-0.0.0.0}
-      - WEB_PORT=${WEB_PORT:-8000}
-      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
-      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
     volumes:
       - ./logs:/app/logs
-      - ./src:/app/src
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
       - gamenight_network
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from core.startup_validator import StartupValidator; import asyncio; result = asyncio.run(StartupValidator().validate_all()); exit(0 if result[0] else 1)"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 120s
 
   web:
     build:
@@ -69,35 +56,23 @@ services:
     env_file:
       - .env
     environment:
-      # Override database URL for container networking
       - DATABASE_URL=mongodb://admin:password@mongodb:27017/gamenight_bot?authSource=admin
-      # Web-specific environment variables
       - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:?DISCORD_CLIENT_ID is required}
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?DISCORD_CLIENT_SECRET is required}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
-      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
       - WEB_HOST=${WEB_HOST:-0.0.0.0}
       - WEB_PORT=${WEB_PORT:-8000}
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
-      - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
+      - "${WEB_PORT:-8000}:8000"
     volumes:
       - ./logs:/app/logs
-      - ./web:/app/web
-      - ./src:/app/src
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
       - gamenight_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${WEB_PORT:-8000}/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 volumes:
   mongodb_data:

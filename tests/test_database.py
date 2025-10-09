@@ -9,7 +9,7 @@ from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.database.manager import DatabaseManager
-from src.database.migrations import MigrationManager, InitialMigration
+from src.database.migrations import MigrationManager, Migration
 from src.models import (
     Event, EventState, User, RecurringSchedule, GuildConfig,
     EventRepository, UserRepository, RecurringScheduleRepository,
@@ -378,14 +378,21 @@ class TestMigrations:
         mock_db_manager.database.migrations.insert_one = AsyncMock()
         
         manager = MigrationManager(mock_db_manager)
-        migration = InitialMigration()
+        
+        # Create a test migration
+        async def test_migration_up(db_manager):
+            pass
+        
+        migration = Migration(
+            version="001",
+            description="Test migration",
+            up_func=test_migration_up
+        )
         
         # Mock successful migration
-        with patch.object(migration, 'up', new_callable=AsyncMock) as mock_up:
-            result = await manager.apply_migration(migration)
-            assert result is True
-            mock_up.assert_called_once_with(mock_db_manager)
-            mock_db_manager.database.migrations.insert_one.assert_called_once()
+        result = await manager._apply_migration(migration)
+        assert result is None  # Method doesn't return anything
+        mock_db_manager.database.migrations.insert_one.assert_called_once()
     
     @pytest.mark.skip(reason="Complex async mocking - integration test needed")
     async def test_migration_status(self, mock_db_manager):

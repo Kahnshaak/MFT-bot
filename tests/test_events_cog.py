@@ -11,7 +11,7 @@ import discord
 from discord.ext import commands
 
 from src.cogs.events import EventsCog
-from src.models.event import Event, EventState, RSVPStatus, PollType
+from src.models.event import Event, EventState, RSVPStatus
 from src.core.event_bus import EventBus, EventType
 from src.core.validation_manager import ValidationManager
 
@@ -104,11 +104,11 @@ async def test_start_date_poll(events_cog, sample_event):
     # Verify state transition
     assert sample_event.state == EventState.DATE_POLLING
     
-    # Verify date poll exists
-    date_poll = sample_event.get_poll(PollType.DATE)
-    assert date_poll is not None
-    assert date_poll.is_active
-    assert len(date_poll.options) > 0
+    # Verify poll exists
+    assert len(sample_event.polls) > 0
+    poll = sample_event.polls[0]
+    assert poll.is_active
+    assert len(poll.options) > 0
     
     # Verify update was called
     events_cog.update_event.assert_called_once_with(sample_event)

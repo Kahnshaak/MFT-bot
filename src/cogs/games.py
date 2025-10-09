@@ -21,7 +21,6 @@ from core.security_manager import Permission
 from core.validation_manager import ValidationManager
 from utils.exceptions import ValidationError, PermissionDeniedError, ErrorCode
 from utils.logging_config import get_logger, LoggerMixin
-from utils.ui_validation_fixes import ImprovedEmbedBuilder, ImprovedButtonBuilder
 
 
 class GameSearchModal(discord.ui.Modal):
@@ -356,11 +355,7 @@ class GamesCog(commands.Cog, LoggerMixin):
         except Exception as e:
             self.logger.error(f"Error handling game interest removed: {e}", exc_info=True)
     
-    async def _update_game_statistics(self, guild_id: str, game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return, action: str):
+    async def _update_game_statistics(self, guild_id: str, game_name: str, action: str):
         """Update game statistics based on action."""
         try:
             # Find or create game
@@ -401,18 +396,16 @@ class GamesCog(commands.Cog, LoggerMixin):
     async def add_game_command(
         self,
         interaction: discord.Interaction,
-        game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return,
+        game_name: str,
         interest_level: int = 5
-        if not (1 <= interest_level <= 10):
-            await interaction.response.send_message("❌ Interest level must be between 1 and 10.", ephemeral=True)
-            return
     ):
         """Add game interest."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             if not (1 <= interest_level <= 10):
                 await interaction.response.send_message(
                     "❌ Interest level must be between 1 and 10.",
@@ -479,13 +472,14 @@ class GamesCog(commands.Cog, LoggerMixin):
         description="Remove a game from your interest list"
     )
     @app_commands.describe(game_name="Name of the game to remove")
-    async def remove_game_command(self, interaction: discord.Interaction, game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return):
+    async def remove_game_command(self, interaction: discord.Interaction, game_name: str):
         """Remove game interest."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             user = await self.repositories.users.get_by_user_and_guild(
                 str(interaction.user.id),
                 str(interaction.guild.id)
@@ -574,13 +568,14 @@ class GamesCog(commands.Cog, LoggerMixin):
         description="Notify users interested in a specific game"
     )
     @app_commands.describe(game_name="Name of the game to ping for")
-    async def ping_game_command(self, interaction: discord.Interaction, game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return):
+    async def ping_game_command(self, interaction: discord.Interaction, game_name: str):
         """Ping users interested in a game."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             # Search for matching games
             matches = await self.repositories.games.search_games(
                 str(interaction.guild.id),
@@ -616,13 +611,14 @@ class GamesCog(commands.Cog, LoggerMixin):
                 ephemeral=True
             )
     
-    async def _handle_game_ping_confirmed(self, interaction: discord.Interaction, game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return):
+    async def _handle_game_ping_confirmed(self, interaction: discord.Interaction, game_name: str):
         """Handle confirmed game ping."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             # Get interested users
             interested_users = await self.repositories.users.get_users_interested_in_game(
                 str(interaction.guild.id),
@@ -682,7 +678,10 @@ class GamesCog(commands.Cog, LoggerMixin):
                 return
             
             # Create embed for the ping
-            embed = discord.Embed(title=f"🎮 Game Night Ping: {game_name}", description=f"{interaction.user.mention} wants to play **{game_name}**!", color=discord.Color.blue(, timestamp=datetime.utcnow()),
+            embed = discord.Embed(
+                title=f"🎮 Game Night Ping: {game_name}", 
+                description=f"{interaction.user.mention} wants to play **{game_name}**!", 
+                color=discord.Color.blue(),
                 timestamp=datetime.utcnow()
             )
             
@@ -844,13 +843,14 @@ class GamesCog(commands.Cog, LoggerMixin):
     @app_commands.describe(game_name="Name of the game to manage metadata for")
     @app_commands.describe(game_name="Name of the game to manage")
     @require_permission(Permission.MANAGE_EVENTS)
-    async def manage_game_command(self, interaction: discord.Interaction, game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return):
+    async def manage_game_command(self, interaction: discord.Interaction, game_name: str):
         """Manage game metadata."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             game = await self.repositories.games.get_by_name(
                 str(interaction.guild.id),
                 game_name
@@ -896,16 +896,17 @@ class GamesCog(commands.Cog, LoggerMixin):
     async def configure_limits_command(
         self,
         interaction: discord.Interaction,
-        game_name: str
-        game_name = game_name.strip()
-        if not game_name or len(game_name) > 100:
-            await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
-            return,
+        game_name: str,
         daily_limit: int = 3,
         weekly_limit: int = 10
     ):
         """Configure notification frequency limits."""
         try:
+            # Validate and sanitize game name
+            game_name = game_name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message("❌ Game name must be 1-100 characters.", ephemeral=True)
+                return
             if not (1 <= daily_limit <= 50):
                 await interaction.response.send_message(
                     "❌ Daily limit must be between 1 and 50.",

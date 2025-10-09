@@ -13,10 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from core.event_bus import EventBus, EventType, Event
 from core.security_manager import SecurityManager, Permission
-from core.validation_manager import ValidationManager, ValidationRule, ValidationType
-from core.metrics_collector import MetricsCollector
-from core.health_monitor import HealthMonitor, HealthStatus
-from core.audit_logger import AuditLogger, AuditEventType
+from core.validation_manager import ValidationManager
 from config.settings import Settings
 from utils.exceptions import ValidationError, PermissionDeniedError
 
@@ -58,7 +55,7 @@ class TestCoreFrameworkIntegration:
         )
     
     @pytest.fixture
-    async def event_bus(self):
+    def event_bus(self):
         """Event bus instance."""
         return EventBus()
     
@@ -72,21 +69,9 @@ class TestCoreFrameworkIntegration:
         """Validation manager instance."""
         return ValidationManager()
     
-    @pytest.fixture
-    def metrics_collector(self):
-        """Metrics collector instance."""
-        return MetricsCollector()
+
     
-    @pytest.fixture
-    async def health_monitor(self, mock_database, mock_bot):
-        """Health monitor instance."""
-        return HealthMonitor(mock_database, mock_bot)
-    
-    @pytest.fixture
-    async def audit_logger(self, mock_database):
-        """Audit logger instance."""
-        return AuditLogger(mock_database)
-    
+    @pytest.mark.asyncio
     async def test_event_bus_basic_functionality(self, event_bus):
         """Test basic event bus functionality."""
         # Test event subscription and emission
@@ -102,7 +87,6 @@ class TestCoreFrameworkIntegration:
         await event_bus.emit(
             EventType.EVENT_CREATED,
             {"event_id": "test_123", "title": "Test Event"},
-            source="test",
             guild_id="guild_123",
             user_id="user_456"
         )
@@ -115,32 +99,33 @@ class TestCoreFrameworkIntegration:
         assert event.guild_id == "guild_123"
         assert event.user_id == "user_456"
     
-    async def test_event_bus_middleware(self, event_bus, metrics_collector):
-        """Test event bus middleware functionality."""
-        # Add middleware that modifies events
-        def test_middleware(event: Event) -> Event:
-            event.data["middleware_processed"] = True
-            return event
+    @pytest.mark.asyncio
+    async def test_event_bus_multiple_subscribers(self, event_bus):
+        """Test event bus with multiple subscribers."""
+        received_events_1 = []
+        received_events_2 = []
         
-        event_bus.add_middleware(test_middleware)
+        async def event_handler_1(event: Event):
+            received_events_1.append(event)
         
-        received_events = []
+        async def event_handler_2(event: Event):
+            received_events_2.append(event)
         
-        async def event_handler(event: Event):
-            received_events.append(event)
-        
-        event_bus.subscribe(EventType.USER_JOINED_GUILD, event_handler)
+        event_bus.subscribe(EventType.EVENT_CREATED, event_handler_1)
+        event_bus.subscribe(EventType.EVENT_CREATED, event_handler_2)
         
         await event_bus.emit(
-            EventType.USER_JOINED_GUILD,
-            {"user_id": "user_123"},
-            source="test"
+            EventType.EVENT_CREATED,
+            {"user_id": "user_123"}
         )
         
-        # Verify middleware processed the event
-        assert len(received_events) == 1
-        assert received_events[0].data["middleware_processed"] is True
+        # Verify both handlers received the event
+        assert len(received_events_1) == 1
+        assert len(received_events_2) == 1
+        assert received_events_1[0].data["user_id"] == "user_123"
+        assert received_events_2[0].data["user_id"] == "user_123"
     
+    @pytest.mark.asyncio
     async def test_security_manager_permissions(self, security_manager):
         """Test security manager permission system."""
         # Create mock Discord member
@@ -155,179 +140,99 @@ class TestCoreFrameworkIntegration:
         guild_id = 67890
         
         # Test basic member permissions
-        permissions = security_manager.get_user_permissions(mock_member, guild_id)
+        permissions = security_manager.get_user_permissions(mock_member)
         assert Permission.VIEW_EVENTS in permissions
         assert Permission.CREATE_EVENTS in permissions
         assert Permission.MANAGE_ALL_EVENTS not in permissions
         
         # Test admin permissions
         mock_member.guild_permissions.administrator = True
-        admin_permissions = security_manager.get_user_permissions(mock_member, guild_id)
-        assert Permission.SYSTEM_ADMIN in admin_permissions
+        admin_permissions = security_manager.get_user_permissions(mock_member)
+        assert Permission.MANAGE_ALL_EVENTS in admin_permissions
         assert len(admin_permissions) > len(permissions)
     
+    @pytest.mark.asyncio
     async def test_validation_manager_input_validation(self, validation_manager):
         """Test validation manager input validation."""
-        # Test valid event title
-        valid_title = validation_manager.validate_field(
-            "event_title",
-            "My Game Night Event"
+        # Test valid string
+        valid_title = validation_manager.validate_string(
+            "My Game Night Event",
+            min_length=3,
+            max_length=100
         )
         assert valid_title == "My Game Night Event"
         
-        # Test invalid event title (too short)
+        # Test invalid string (too short)
         with pytest.raises(ValidationError):
-            validation_manager.validate_field("event_title", "Hi")
+            validation_manager.validate_string("Hi", min_length=3)
         
-        # Test invalid event title (forbidden content)
-        with pytest.raises(ValidationError):
-            validation_manager.validate_field("event_title", "Test @everyone")
-        
-        # Test game name sanitization
-        game_name = validation_manager.validate_field(
-            "game_name",
-            "  among   us  "
-        )
-        assert game_name == "Among Us"
+        # Test string sanitization (Discord mentions)
+        sanitized = validation_manager.validate_string("Test @everyone")
+        assert "@everyone" not in sanitized
+        assert "@\u200beveryone" in sanitized
     
-    async def test_metrics_collector_recording(self, metrics_collector):
-        """Test metrics collector functionality."""
-        # Record various metrics
-        await metrics_collector.record_command(
-            "test_command",
-            duration=0.5,
-            success=True,
-            guild_id="guild_123",
-            user_id="user_456"
-        )
-        
-        metrics_collector.record_counter("test_counter", 5.0, {"type": "test"})
-        metrics_collector.record_gauge("test_gauge", 42.0)
-        
-        # Verify metrics were recorded
-        counter_value = metrics_collector.get_counter_value("commands_total", {
-            "command": "test_command",
-            "success": "true",
-            "guild_id": "guild_123"
-        })
-        assert counter_value == 1.0
-        
-        gauge_value = metrics_collector.get_gauge_value("test_gauge")
-        assert gauge_value == 42.0
-        
-        # Test command stats
-        stats = metrics_collector.get_command_stats()
-        assert "test_command" in stats
-        assert stats["test_command"]["total_executions"] == 1
-        assert stats["test_command"]["success_rate"] == 1.0
-    
-    async def test_health_monitor_checks(self, health_monitor, mock_database):
-        """Test health monitor functionality."""
-        # Run health checks
-        results = await health_monitor.run_all_checks()
-        
-        # Verify health checks ran
-        assert "database" in results
-        assert "discord_api" in results
-        assert "bot_connectivity" in results
-        
-        # Verify database check
-        db_check = results["database"]
-        assert db_check.name == "database"
-        assert db_check.status in [HealthStatus.HEALTHY, HealthStatus.DEGRADED, HealthStatus.UNHEALTHY]
-        
-        # Test overall health status
-        overall_status = health_monitor.get_overall_health()
-        assert isinstance(overall_status, HealthStatus)
-    
-    async def test_audit_logger_functionality(self, audit_logger, mock_database):
-        """Test audit logger functionality."""
-        # Log various audit events
-        await audit_logger.log_event(
-            event_type=AuditEventType.EVENT_CREATED,
-            action="Created test event",
-            user_id="user_123",
-            guild_id="guild_456",
-            resource_id="event_789",
-            resource_type="event",
-            details={"title": "Test Event"}
-        )
-        
-        await audit_logger.log_security_event(
-            event_type=AuditEventType.RATE_LIMIT_EXCEEDED,
-            action="Rate limit exceeded",
-            user_id="user_123",
-            severity="medium"
-        )
-        
-        # Verify database calls were made
-        assert mock_database.insert_document.call_count == 2
-        
-        # Verify correct collection was used
-        calls = mock_database.insert_document.call_args_list
-        for call in calls:
-            assert call[0][0] == "audit_logs"  # Collection name
-    
-    async def test_integrated_error_handling(self, event_bus, audit_logger):
-        """Test integrated error handling across components."""
-        # Add middleware that raises an exception
-        def failing_middleware(event: Event) -> Event:
-            raise ValueError("Test middleware error")
-        
-        event_bus.add_middleware(failing_middleware)
-        
+    @pytest.mark.asyncio
+    async def test_event_error_handling(self, event_bus):
+        """Test error handling in event callbacks."""
         received_events = []
+        error_occurred = False
         
-        async def event_handler(event: Event):
+        async def failing_handler(event: Event):
+            nonlocal error_occurred
+            error_occurred = True
+            raise ValueError("Test handler error")
+        
+        async def working_handler(event: Event):
             received_events.append(event)
         
-        # Subscribe to both original and error events
-        event_bus.subscribe(EventType.EVENT_CREATED, event_handler)
-        event_bus.subscribe(EventType.ERROR_OCCURRED, event_handler)
+        # Subscribe both handlers
+        event_bus.subscribe(EventType.EVENT_CREATED, failing_handler)
+        event_bus.subscribe(EventType.EVENT_CREATED, working_handler)
         
-        # Emit event that will trigger middleware error
+        # Emit event - should not crash despite failing handler
         await event_bus.emit(
             EventType.EVENT_CREATED,
-            {"test": "data"},
-            source="test"
+            {"test": "data"}
         )
         
-        # Should receive error event due to middleware failure
-        error_events = [e for e in received_events if e.event_type == EventType.ERROR_OCCURRED]
-        assert len(error_events) > 0
-        
-        error_event = error_events[0]
-        assert "error_type" in error_event.data
-        assert error_event.data["error_type"] == "ValueError"
+        # Working handler should still receive the event
+        assert len(received_events) == 1
+        assert error_occurred is True
     
-    async def test_rate_limiting_integration(self, security_manager):
-        """Test rate limiting functionality."""
-        identifier = "test_user_123"
+    @pytest.mark.asyncio
+    async def test_permission_checking_integration(self, security_manager):
+        """Test permission checking functionality."""
+        # Create mock member with admin permissions
+        mock_admin = MagicMock()
+        mock_admin.guild_permissions = MagicMock()
+        mock_admin.guild_permissions.administrator = True
+        mock_admin.guild_permissions.manage_guild = False
         
-        # Should not be rate limited initially
-        security_manager.check_rate_limit(identifier, max_requests=2, window_seconds=60)
-        security_manager.check_rate_limit(identifier, max_requests=2, window_seconds=60)
+        # Admin should have all permissions
+        permissions = security_manager.get_user_permissions(mock_admin)
+        assert Permission.MANAGE_ALL_EVENTS in permissions
+        assert Permission.CONFIGURE_BOT in permissions
         
-        # Third request should be rate limited
-        with pytest.raises(Exception):  # Should raise RateLimitedError
-            security_manager.check_rate_limit(identifier, max_requests=2, window_seconds=60)
+        # Test permission requirement
+        try:
+            security_manager.require_permission(mock_admin, Permission.MANAGE_ALL_EVENTS)
+            # Should not raise exception
+        except PermissionDeniedError:
+            pytest.fail("Admin should have required permission")
     
+    @pytest.mark.asyncio
     async def test_permission_and_validation_integration(self, security_manager, validation_manager):
         """Test integration between permission and validation systems."""
         # Create mock member with basic permissions
         mock_member = MagicMock()
         mock_member.id = 12345
-        mock_member.roles = []
         mock_member.guild_permissions = MagicMock()
         mock_member.guild_permissions.administrator = False
         mock_member.guild_permissions.manage_guild = False
-        mock_member.guild_permissions.manage_messages = False
-        
-        guild_id = 67890
         
         # Test permission check
         has_create_permission = security_manager.check_permission(
-            mock_member, guild_id, Permission.CREATE_EVENTS
+            mock_member, Permission.CREATE_EVENTS
         )
         assert has_create_permission is True
         
@@ -337,7 +242,12 @@ class TestCoreFrameworkIntegration:
             "description": "This is a valid event description"
         }
         
-        validated_data = validation_manager.validate_data(event_data)
+        validation_rules = {
+            "title": {"type": "string", "min_length": 3, "max_length": 100},
+            "description": {"type": "string", "max_length": 2000}
+        }
+        
+        validated_data = validation_manager.validate_data(event_data, validation_rules)
         assert validated_data["title"] == "Valid Event Title"
         assert "description" in validated_data
 

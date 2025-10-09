@@ -1,6 +1,6 @@
 # Discord Game Night Bot - Deployment Guide
 
-This guide provides step-by-step instructions for deploying the Discord Game Night Bot in various environments.
+This guide provides step-by-step instructions for deploying the simplified Discord Game Night Bot in various environments.
 
 ## Table of Contents
 
@@ -16,12 +16,12 @@ This guide provides step-by-step instructions for deploying the Discord Game Nig
 
 ### System Requirements
 
-- **Python**: 3.8 or higher
-- **MongoDB**: 4.4 or higher
+- **Python**: 3.11 or higher
+- **MongoDB**: 7.0 or higher
 - **Docker**: 20.10+ (for Docker deployment)
 - **Docker Compose**: 1.29+ (for Docker deployment)
-- **Memory**: Minimum 512MB RAM
-- **Storage**: Minimum 1GB free space
+- **Memory**: Minimum 256MB RAM (reduced from previous requirements)
+- **Storage**: Minimum 500MB free space (reduced from previous requirements)
 
 ### Discord Setup
 
@@ -82,26 +82,16 @@ DISCORD_CLIENT_SECRET=your_client_secret_here
 # Database Configuration
 DATABASE_URL=mongodb://admin:password@localhost:27017/gamenight_bot?authSource=admin
 
-# Web Dashboard Configuration
+# Web Dashboard Configuration (Optional)
 JWT_SECRET=your_secure_jwt_secret_here
 WEB_HOST=0.0.0.0
 WEB_PORT=8000
 
 # Logging Configuration
 LOG_LEVEL=INFO
-LOG_FILE_PATH=logs/gamenight_bot.log
-LOG_MAX_BYTES=10485760
-LOG_BACKUP_COUNT=5
 
 # Environment
 ENVIRONMENT=production
-
-# Security
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
-
-# Rate Limiting
-RATE_LIMIT_PER_MINUTE=60
-RATE_LIMIT_BURST=10
 ```
 
 ### 3. Generate Secure Secrets
@@ -271,16 +261,24 @@ Restart MongoDB:
 sudo systemctl restart mongod
 ```
 
-### 4. Run Startup Validation
+### 4. Initialize Database
 
-Before starting the bot, run the startup validation:
+Before starting the bot, ensure the database is accessible:
 
 ```bash
-# Run validation script
-python src/core/startup_validator.py
+# Test database connection
+python -c "
+import asyncio
+from src.database.manager import DatabaseManager
 
-# Or run database migrations
-python src/database/migrations.py
+async def test():
+    db = DatabaseManager('mongodb://admin:password@localhost:27017/gamenight_bot?authSource=admin')
+    await db.connect()
+    print('Database connection successful')
+    await db.disconnect()
+
+asyncio.run(test())
+"
 ```
 
 ### 5. Start the Bot
@@ -334,14 +332,11 @@ sudo systemctl status gamenight-bot
 | `DISCORD_CLIENT_ID` | ✅ | - | Discord application client ID |
 | `DISCORD_CLIENT_SECRET` | ✅ | - | Discord application client secret |
 | `DATABASE_URL` | ❌ | `mongodb://localhost:27017/gamenight_bot` | MongoDB connection string |
-| `JWT_SECRET` | ✅ | - | JWT secret for web authentication |
-| `WEB_HOST` | ❌ | `0.0.0.0` | Web server host |
-| `WEB_PORT` | ❌ | `8000` | Web server port |
+| `JWT_SECRET` | ❌ | - | JWT secret for web authentication (only needed if using web dashboard) |
+| `WEB_HOST` | ❌ | `0.0.0.0` | Web server host (only needed if using web dashboard) |
+| `WEB_PORT` | ❌ | `8000` | Web server port (only needed if using web dashboard) |
 | `LOG_LEVEL` | ❌ | `INFO` | Logging level |
-| `LOG_FILE_PATH` | ❌ | `logs/gamenight_bot.log` | Log file path |
 | `ENVIRONMENT` | ❌ | `development` | Environment (development/production) |
-| `RATE_LIMIT_PER_MINUTE` | ❌ | `60` | Rate limit per minute |
-| `RATE_LIMIT_BURST` | ❌ | `10` | Rate limit burst |
 
 ### Bot Configuration
 
@@ -362,14 +357,14 @@ The bot can be configured through Discord slash commands once deployed:
 
 **Solutions**:
 ```bash
-# Run startup validation
-python src/core/startup_validator.py
-
 # Check environment variables
 cat .env
 
 # Verify Discord token
 # Token should start with "MTM" or similar
+
+# Test basic bot startup
+python -c "import discord; print('Discord.py imported successfully')"
 ```
 
 #### 2. Database Connection Failed
@@ -426,31 +421,28 @@ tail -f logs/gamenight_bot.log
 
 #### Common Log Messages
 
-- `✅ All startup validations passed!` - Bot started successfully
-- `❌ Startup validation failed!` - Check validation report
-- `Database connection established` - Database connected
+- `Successfully connected to MongoDB` - Database connected
 - `Bot is ready!` - Bot connected to Discord
+- `Loaded cog:` - Cog loaded successfully
+- `Command tree synced` - Slash commands registered
 
 ### Health Checks
 
-The bot includes built-in health monitoring:
+Basic health monitoring:
 
 ```bash
 # Check bot status via logs
-grep "Health check" logs/gamenight_bot.log
+grep "Bot is ready" logs/gamenight_bot.log
 
 # Database connectivity test
 python -c "
 import asyncio
 from src.database.manager import DatabaseManager
-from src.config.settings import Settings
 
 async def test():
-    settings = Settings()
-    db = DatabaseManager(settings.database_url)
+    db = DatabaseManager('mongodb://admin:password@localhost:27017/gamenight_bot?authSource=admin')
     await db.connect()
-    result = await db.ping()
-    print(f'Database ping: {result}')
+    print('Database connection successful')
     await db.disconnect()
 
 asyncio.run(test())
@@ -461,15 +453,15 @@ asyncio.run(test())
 
 ### Regular Maintenance Tasks
 
-#### 1. Log Rotation
-Logs are automatically rotated, but monitor disk usage:
+#### 1. Log Management
+Monitor log file sizes:
 
 ```bash
 # Check log file sizes
 du -sh logs/
 
 # Manual log cleanup if needed
-find logs/ -name "*.log.*" -mtime +30 -delete
+find logs/ -name "*.log" -mtime +30 -delete
 ```
 
 #### 2. Database Maintenance
@@ -564,7 +556,7 @@ For additional support:
 
 1. Check the troubleshooting section above
 2. Review bot logs for error messages
-3. Run startup validation to identify issues
+3. Test database connectivity
 4. Check Discord API status at https://discordstatus.com/
 
 ---
@@ -576,7 +568,7 @@ For additional support:
 - [ ] `.env` file configured with all required variables
 - [ ] MongoDB installed and running (or Docker available)
 - [ ] Dependencies installed
-- [ ] Startup validation passes
+- [ ] Database connectivity tested
 - [ ] Bot starts successfully and responds to commands
 - [ ] Logs are being written correctly
 - [ ] Database connections working

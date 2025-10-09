@@ -1,4 +1,4 @@
-/* Game Night Bot Dashboard Custom Styles */
+/* Game Night Bot Dashboard - Simplified Styles */
 
 :root {
     --primary-color: #4e73df;
@@ -6,15 +6,9 @@
     --info-color: #36b9cc;
     --warning-color: #f6c23e;
     --danger-color: #e74a3b;
-    --secondary-color: #858796;
-    --dark-color: #5a5c69;
-    --light-color: #f8f9fc;
-    --border-radius: 0.375rem;
-    --box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
-    --transition: all 0.3s ease;
 }
 
-/* Custom card styles */
+/* Basic card styles */
 .card {
     box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
     border: 1px solid #e3e6f0;
@@ -23,16 +17,6 @@
 .card-header {
     background-color: #f8f9fc;
     border-bottom: 1px solid #e3e6f0;
-}
-
-/* Stat cards */
-.stat-card {
-    transition: all 0.3s;
-}
-
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0.25rem 2rem 0 rgba(58, 59, 69, 0.2);
 }
 
 /* Border colors for stat cards */
@@ -46,6 +30,10 @@
 
 .border-left-info {
     border-left: 0.25rem solid var(--info-color) !important;
+}
+
+.border-left-warning {
+    border-left: 0.25rem solid var(--warning-color) !important;
 }
 
 .border-left-warning {

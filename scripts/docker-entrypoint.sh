@@ -3,11 +3,6 @@ set -e
 
 echo "🚀 Starting Discord Game Night Bot in Docker..."
 
-# Function to check if we're in development mode
-is_development() {
-    [[ "${ENVIRONMENT:-development}" == "development" ]]
-}
-
 # Function to validate environment
 validate_environment() {
     echo "🔍 Validating environment..."
@@ -64,27 +59,6 @@ wait_for_database() {
     return 0
 }
 
-# Function to run startup validation
-run_startup_validation() {
-    echo "🔍 Running startup validation..."
-    
-    if python scripts/validate-env.py; then
-        echo "✅ Startup validation passed"
-        return 0
-    else
-        echo "❌ Startup validation failed"
-        
-        if is_development; then
-            echo "⚠️  Development mode: Continuing despite validation failures"
-            echo "   This is normal if Discord token is invalid or bot is not in any servers"
-            return 0
-        else
-            echo "💥 Production mode: Stopping due to validation failures"
-            return 1
-        fi
-    fi
-}
-
 # Main execution
 main() {
     # Validate environment variables
@@ -96,12 +70,6 @@ main() {
     # Wait for database
     if ! wait_for_database; then
         echo "💥 Database connection failed"
-        exit 1
-    fi
-    
-    # Run startup validation
-    if ! run_startup_validation; then
-        echo "💥 Startup validation failed"
         exit 1
     fi
     

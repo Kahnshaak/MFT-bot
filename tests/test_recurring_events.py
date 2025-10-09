@@ -12,8 +12,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from models.recurring import (
-    RecurringSchedule, ScheduleTrigger, EventTemplate, ExecutionHistory,
-    TriggerType, ScheduleStatus, ExecutionStatus
+    RecurringSchedule, ScheduleStatus
 )
 from cogs.recurring import RecurringCog
 

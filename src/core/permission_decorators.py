@@ -86,7 +86,7 @@ def require_permission(
             
             # Check permission
             try:
-                security_manager.require_permission(user, int(guild_id), permission)
+                security_manager.require_permission(user, permission)
                 
                 logger.debug(
                     "Permission check passed",
@@ -161,7 +161,7 @@ def require_any_permission(*permissions: Permission):
                 raise PermissionDeniedError("Security system unavailable")
             
             # Check if user has any of the required permissions
-            user_permissions = security_manager.get_user_permissions(user, int(guild_id))
+            user_permissions = security_manager.get_user_permissions(user)
             
             for permission in permissions:
                 if permission in user_permissions:
@@ -190,80 +190,7 @@ def require_any_permission(*permissions: Permission):
     return decorator
 
 
-def rate_limit(
-    max_requests: int = 5,
-    window_seconds: int = 60,
-    per_user: bool = True,
-    per_guild: bool = False
-):
-    """
-    Decorator to apply rate limiting to commands.
-    
-    Args:
-        max_requests: Maximum requests per window
-        window_seconds: Time window in seconds
-        per_user: Apply rate limit per user
-        per_guild: Apply rate limit per guild
-    """
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            # Extract context
-            ctx = None
-            user = None
-            guild_id = None
-            
-            if args:
-                if isinstance(args[0], commands.Context):
-                    ctx = args[0]
-                    user = ctx.author
-                    guild_id = str(ctx.guild.id) if ctx.guild else None
-                elif isinstance(args[0], discord.Interaction):
-                    interaction = args[0]
-                    user = interaction.user
-                    guild_id = str(interaction.guild.id) if interaction.guild else None
-                elif hasattr(args[0], 'bot'):
-                    cog = args[0]
-                    if len(args) > 1:
-                        if isinstance(args[1], commands.Context):
-                            ctx = args[1]
-                            user = ctx.author
-                            guild_id = str(ctx.guild.id) if ctx.guild else None
-                        elif isinstance(args[1], discord.Interaction):
-                            interaction = args[1]
-                            user = interaction.user
-                            guild_id = str(interaction.guild.id) if interaction.guild else None
-            
-            # Get security manager
-            security_manager = None
-            if ctx and hasattr(ctx.bot, 'security'):
-                security_manager = ctx.bot.security
-            elif hasattr(args[0], 'bot') and hasattr(args[0].bot, 'security'):
-                security_manager = args[0].bot.security
-            
-            if security_manager:
-                # Build rate limit identifier
-                identifier_parts = [func.__name__]
-                
-                if per_user and user:
-                    identifier_parts.append(f"user:{user.id}")
-                
-                if per_guild and guild_id:
-                    identifier_parts.append(f"guild:{guild_id}")
-                
-                identifier = ":".join(identifier_parts)
-                
-                # Check rate limit
-                security_manager.check_rate_limit(
-                    identifier, 
-                    max_requests, 
-                    window_seconds
-                )
-            
-            return await func(*args, **kwargs)
-        
-        return wrapper
-    return decorator
+# Rate limiting removed in simplified version
 
 
 def validate_input(**field_rules):
@@ -282,14 +209,9 @@ def validate_input(**field_rules):
                 validation_manager = args[0].bot.validation
             
             if validation_manager and field_rules:
-                # Validate specified parameters
-                for param_name, rule in field_rules.items():
-                    if param_name in kwargs:
-                        kwargs[param_name] = validation_manager.validate_field(
-                            param_name, 
-                            kwargs[param_name], 
-                            rule
-                        )
+                # Validate specified parameters using simplified validation
+                validated_data = validation_manager.validate_data(kwargs, field_rules)
+                kwargs.update(validated_data)
             
             return await func(*args, **kwargs)
         
@@ -348,11 +270,7 @@ def has_permission(permission: Permission):
         if not security_manager:
             return False
         
-        return security_manager.check_permission(
-            ctx.author, 
-            ctx.guild.id, 
-            permission
-        )
+        return security_manager.check_permission(ctx.author, permission)
     
     return commands.check(predicate)
 
@@ -372,10 +290,7 @@ def has_any_permission(*permissions: Permission):
         if not security_manager:
             return False
         
-        user_permissions = security_manager.get_user_permissions(
-            ctx.author, 
-            ctx.guild.id
-        )
+        user_permissions = security_manager.get_user_permissions(ctx.author)
         
         return any(perm in user_permissions for perm in permissions)
     

@@ -14,13 +14,10 @@ from models.event import Event, Poll, PollOption, PollType, EventState
 from core.poll_manager import PollManager
 from core.event_bus import EventBus, EventType
 from utils.logging_config import get_logger, LoggerMixin
-from utils.mobile_ui_components import (
-    MobileOptimizedView, MobileOptimizedButton, MobileOptimizedSelect, 
-    MobileOptimizedModal, create_mobile_optimized_embed
-)
+# Mobile UI components removed - using standard Discord components
 
 
-class PersistentPollView(MobileOptimizedView, LoggerMixin):
+class PersistentPollView(discord.ui.View, LoggerMixin):
     """Base class for persistent poll views that survive bot restarts."""
     
     def __init__(self, cog, event: Event, poll: Poll, timeout: Optional[float] = None):
@@ -110,7 +107,7 @@ class EnhancedDatePollView(PersistentPollView):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-class EnhancedDateButton(MobileOptimizedButton):
+class EnhancedDateButton(discord.ui.Button):
     """Enhanced date button with vote tracking and visual feedback."""
     
     def __init__(self, option: PollOption, index: int):
@@ -206,7 +203,7 @@ class EnhancedDateButton(MobileOptimizedButton):
             )
 
 
-class CustomDateButton(MobileOptimizedButton):
+class CustomDateButton(discord.ui.Button):
     """Button to add custom date option."""
     
     def __init__(self):
@@ -223,7 +220,7 @@ class CustomDateButton(MobileOptimizedButton):
         await interaction.response.send_modal(modal)
 
 
-class CustomDateModal(MobileOptimizedModal):
+class CustomDateModal(discord.ui.Modal):
     """Modal for adding custom date option."""
     
     def __init__(self, view: EnhancedDatePollView):

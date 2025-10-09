@@ -15,9 +15,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 from core.event_bus import EventBus, EventType, Event
 from core.security_manager import SecurityManager, Permission
 from core.validation_manager import ValidationManager
-from core.metrics_collector import MetricsCollector
-from core.health_monitor import HealthMonitor, HealthStatus
-from core.audit_logger import AuditLogger, AuditEventType
 from config.settings import Settings
 from utils.exceptions import ValidationError, PermissionDeniedError
 
@@ -58,42 +55,18 @@ async def test_complete_integration():
     event_bus = EventBus()
     security_manager = SecurityManager(settings)
     validation_manager = ValidationManager()
-    metrics_collector = MetricsCollector()
-    health_monitor = HealthMonitor(mock_database, mock_bot)
-    audit_logger = AuditLogger(mock_database)
     
     print("✅ All components initialized")
     
-    # 2. Set up event bus middleware for metrics and audit logging
+    # 2. Set up event bus middleware for basic processing
     print("\n🔧 Setting up event bus middleware...")
     
-    async def metrics_middleware(event: Event) -> Event:
-        """Middleware to record metrics for events."""
-        await metrics_collector.record_counter(
-            "event_bus_events_total",
-            1.0,
-            {"event_type": event.event_type.value, "source": event.source or "unknown"}
-        )
+    async def processing_middleware(event: Event) -> Event:
+        """Middleware to process events."""
+        event.data["processed_at"] = datetime.utcnow().isoformat()
         return event
     
-    async def audit_middleware(event: Event) -> Event:
-        """Middleware to log audit events."""
-        audit_worthy_events = [
-            "EVENT_CREATED", "EVENT_UPDATED", "EVENT_CANCELLED"
-        ]
-        
-        if event.event_type.value.upper() in audit_worthy_events:
-            await audit_logger.log_event(
-                event_type=AuditEventType.EVENT_CREATED,
-                action=f"Event bus: {event.event_type.value}",
-                user_id=event.user_id,
-                guild_id=event.guild_id,
-                details={"source": event.source, "data": event.data}
-            )
-        return event
-    
-    event_bus.add_middleware(metrics_middleware)
-    event_bus.add_middleware(audit_middleware)
+    event_bus.add_middleware(processing_middleware)
     
     print("✅ Middleware configured")
     
@@ -139,15 +112,7 @@ async def test_complete_integration():
     async def event_handler(event: Event):
         received_events.append(event)
         print(f"📨 Received event: {event.event_type.value}")
-        
-        # Record command metrics when event is handled
-        await metrics_collector.record_command(
-            "handle_event",
-            duration=0.1,
-            success=True,
-            guild_id=event.guild_id,
-            user_id=event.user_id
-        )
+        print(f"📨 Event processed at: {event.data.get('processed_at', 'N/A')}")
     
     # Subscribe to events
     event_bus.subscribe(EventType.EVENT_CREATED, event_handler)
@@ -173,53 +138,14 @@ async def test_complete_integration():
     assert event.data["title"] == validated_data["title"]
     print("✅ Event bus integration working")
     
-    # 5. Test health monitoring
-    print("\n🏥 Testing health monitoring...")
+    # 5. Test basic event processing
+    print("\n🔄 Testing basic event processing...")
     
-    health_results = await health_monitor.run_all_checks()
-    overall_health = health_monitor.get_overall_health()
+    # Verify event was processed by middleware
+    assert "processed_at" in event.data, "Event should have been processed by middleware"
+    print("✅ Event processing working")
     
-    print(f"✅ Health checks completed: {len(health_results)} checks")
-    print(f"✅ Overall health status: {overall_health.value}")
-    
-    # 6. Test metrics collection
-    print("\n📊 Testing metrics collection...")
-    
-    # Check that metrics were recorded by middleware
-    event_counter = metrics_collector.get_counter_value(
-        "event_bus_events_total",
-        {"event_type": "event_created", "source": "event_creation_workflow"}
-    )
-    assert event_counter == 1.0, f"Expected 1 event, got {event_counter}"
-    
-    # Get command stats
-    command_stats = metrics_collector.get_command_stats()
-    assert "handle_event" in command_stats, "Command stats should include handle_event"
-    
-    # Get system stats
-    system_stats = metrics_collector.get_system_stats()
-    assert system_stats["total_commands"] >= 1, "Should have recorded at least 1 command"
-    
-    print("✅ Metrics collection working")
-    
-    # 7. Test audit logging
-    print("\n📝 Testing audit logging...")
-    
-    # Verify audit log was called by middleware
-    assert mock_database.insert_document.called, "Audit log should have been written"
-    
-    # Test direct audit logging
-    await audit_logger.log_security_event(
-        event_type=AuditEventType.PERMISSION_GRANTED,
-        action="Permission check passed",
-        user_id=str(mock_member.id),
-        guild_id=str(guild_id),
-        severity="low"
-    )
-    
-    print("✅ Audit logging working")
-    
-    # 8. Test error handling integration
+    # 6. Test error handling integration
     print("\n⚠️  Testing error handling integration...")
     
     # Test validation error
@@ -240,7 +166,7 @@ async def test_complete_integration():
     except PermissionDeniedError:
         print("✅ Permission error handled correctly")
     
-    # 9. Test rate limiting
+    # 7. Test rate limiting
     print("\n🚦 Testing rate limiting...")
     
     identifier = "test_user_123"
@@ -262,33 +188,22 @@ async def test_complete_integration():
     except Exception:
         print("✅ Rate limiting working correctly")
     
-    # 10. Final integration verification
+    # 8. Final integration verification
     print("\n🔍 Final integration verification...")
     
-    # Verify all systems recorded the activity
-    final_metrics = metrics_collector.export_metrics()
-    assert "counters" in final_metrics
-    assert "command_stats" in final_metrics
-    assert "system_stats" in final_metrics
+    # Verify basic functionality is working
+    assert len(received_events) == 1, "Should have received exactly one event"
+    assert received_events[0].event_type == EventType.EVENT_CREATED
+    assert "processed_at" in received_events[0].data
     
-    print("✅ All metrics exported successfully")
+    print("✅ Basic integration verified")
     
-    # Verify health monitoring is functional
-    health_summary = health_monitor.get_health_summary()
-    assert "overall_status" in health_summary
-    assert "checks" in health_summary
-    
-    print("✅ Health monitoring summary available")
-    
-    print("\n🎉 COMPREHENSIVE INTEGRATION TEST PASSED!")
+    print("\n🎉 SIMPLIFIED INTEGRATION TEST PASSED!")
     print("✅ Event Bus: Working with typed events and middleware")
     print("✅ Security Manager: Permission checks and rate limiting")
     print("✅ Validation Manager: Input validation and sanitization")
-    print("✅ Metrics Collector: Command and system metrics")
-    print("✅ Health Monitor: Database and API health checks")
-    print("✅ Audit Logger: Security and action logging")
     print("✅ Error Handling: Proper exception handling")
-    print("✅ Integration: All systems working together")
+    print("✅ Integration: Core systems working together")
     
     return True
 

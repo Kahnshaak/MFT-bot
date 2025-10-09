@@ -11,8 +11,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from models.notification import (
-    Notification, NotificationChannel, NotificationType, NotificationStatus,
-    NotificationTemplate, DEFAULT_TEMPLATES
+    Notification, NotificationType, NotificationStatus
 )
 from core.notification_manager import NotificationManager
 from core.event_bus import EventBus
