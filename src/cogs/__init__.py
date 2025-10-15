@@ -5,8 +5,7 @@ This package contains all Discord bot cogs (command modules).
 Individual cogs are loaded by the bot as needed.
 """
 
-# Import cogs for easier access
-from .events import EventsCog
-from .admin import AdminCog
+# Cogs are loaded individually by the bot
+# Removed imports to avoid dependency issues during startup
 
-__all__ = ['EventsCog', 'AdminCog']
+__all__ = []

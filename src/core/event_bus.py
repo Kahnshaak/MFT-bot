@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 class EventType(Enum):
     """Core event types for the system."""
     
+    # System events
+    SYSTEM_STARTUP = "system_startup"
+    SYSTEM_ERROR = "system_error"
+    
     # Event lifecycle events
     EVENT_CREATED = "event_created"
     EVENT_UPDATED = "event_updated"
@@ -24,6 +28,11 @@ class EventType(Enum):
     POLL_CREATED = "poll_created"
     POLL_VOTE_CAST = "poll_vote_cast"
     POLL_COMPLETED = "poll_completed"
+    POLL_EXPIRED = "poll_expired"
+    
+    # Event state changes
+    EVENT_STATE_CHANGED = "event_state_changed"
+    EVENT_SCHEDULED = "event_scheduled"
     
     # User events
     USER_PREFERENCES_UPDATED = "user_preferences_updated"

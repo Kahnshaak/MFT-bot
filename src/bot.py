@@ -43,6 +43,10 @@ class GameNightBot(commands.Bot):
             help_command=None
         )
         
+        # Set up logging first
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Bot instance created")
+        
         # Initialize core components - only essential ones
         self.settings = Settings()
         self.database: Optional[DatabaseManager] = None
@@ -50,30 +54,41 @@ class GameNightBot(commands.Bot):
         self.security: Optional[SecurityManager] = None
         self.validation: Optional[ValidationManager] = None
         self.poll_manager: Optional[PollManager] = None
-        
-        # Set up logging
-        self.logger = logging.getLogger(__name__)
+        self._initialized = False
     
     async def setup_hook(self):
         """Initialize bot components and load cogs."""
+        print("🔧 setup_hook called!")  # Simple print to see if this is called
+        try:
+            self.logger.info("🔧 setup_hook called - starting bot setup...")
+        except Exception as e:
+            print(f"Error in setup_hook logging: {e}")
+            return
+        
         try:
             self.logger.info("Starting bot setup...")
             
             # Initialize database connection
             self.database = DatabaseManager(self.settings.database_url)
+            self.logger.info("Connecting to database...")
             await self.database.connect()
+            self.logger.info("Database connected successfully")
             
             # Initialize database schema and run migrations
             self.logger.info("Initializing database schema...")
             await initialize_database(self.database)
+            self.logger.info("Database schema initialized")
             
             # Initialize core systems - only essential ones
+            self.logger.info("Initializing core systems...")
             self.event_bus = EventBus()
             self.security = SecurityManager(self.settings)
             self.validation = ValidationManager()
             self.poll_manager = PollManager(self.event_bus, self.database)
+            self.logger.info("Core systems initialized")
             
             # Load cogs with error handling
+            self.logger.info("Loading cogs...")
             cogs_to_load = [
                 'cogs.events',
                 'cogs.users', 
@@ -86,10 +101,11 @@ class GameNightBot(commands.Bot):
             
             for cog in cogs_to_load:
                 try:
+                    self.logger.info(f"Loading cog: {cog}")
                     await self.load_extension(cog)
-                    self.logger.info(f"Loaded cog: {cog}")
+                    self.logger.info(f"✅ Loaded cog: {cog}")
                 except Exception as e:
-                    self.logger.error(f"Failed to load cog {cog}: {e}")
+                    self.logger.error(f"❌ Failed to load cog {cog}: {e}", exc_info=True)
                     # Continue loading other cogs
             
             self.logger.info("Bot setup completed successfully")
@@ -98,10 +114,127 @@ class GameNightBot(commands.Bot):
             self.logger.error(f"Failed to setup bot: {e}")
             raise
     
+    async def _initialize_bot(self):
+        """Initialize bot components and load cogs."""
+        print("🔧 _initialize_bot called!")  # Simple print to see if this is called
+        try:
+            self.logger.info("🔧 Initializing bot components...")
+            
+            # Initialize database connection
+            self.database = DatabaseManager(self.settings.database_url)
+            self.logger.info("Connecting to database...")
+            await self.database.connect()
+            self.logger.info("Database connected successfully")
+            
+            # Initialize database schema and run migrations
+            self.logger.info("Initializing database schema...")
+            await initialize_database(self.database)
+            self.logger.info("Database schema initialized")
+            
+            # Initialize core systems - only essential ones
+            self.logger.info("Initializing core systems...")
+            self.event_bus = EventBus()
+            self.security = SecurityManager(self.settings)
+            self.validation = ValidationManager()
+            self.poll_manager = PollManager(self.event_bus, self.database)
+            self.logger.info("Core systems initialized")
+            
+            # Load cogs with error handling
+            self.logger.info("Loading cogs...")
+            cogs_to_load = [
+                'cogs.events',  # Only load events cog for now
+                # 'cogs.users', 
+                # 'cogs.games',
+                # 'cogs.notifications',
+                # 'cogs.timestamps',
+                # 'cogs.admin',
+                # 'cogs.recurring'
+            ]
+            
+            # Load events cog manually for now
+            try:
+                self.logger.info("Loading EventsCog manually...")
+                from cogs.events import EventsCog
+                cog_instance = EventsCog(self)
+                self.logger.info("EventsCog instance created")
+                result = self.add_cog(cog_instance)
+                self.logger.info(f"add_cog returned: {result}")
+                if result is not None:
+                    await result
+                self.logger.info("✅ Loaded EventsCog successfully")
+            except Exception as e:
+                self.logger.error(f"❌ Failed to load EventsCog: {e}", exc_info=True)
+            
+            self.logger.info("Bot initialization completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize bot: {e}", exc_info=True)
+            raise
+    
+    async def on_modal_error(self, interaction, error):
+        """Handle modal errors."""
+        self.logger.error("=" * 80)
+        self.logger.error("MODAL ERROR DETECTED")
+        self.logger.error("=" * 80)
+        self.logger.error(f"Modal: {interaction.data.get('custom_id', 'Unknown')}")
+        self.logger.error(f"User: {interaction.user.id}")
+        self.logger.error(f"Guild: {interaction.guild.id if interaction.guild else 'None'}")
+        self.logger.error(f"Error: {error}")
+        self.logger.error(f"Error type: {type(error)}")
+        
+        import traceback
+        self.logger.error("Full traceback:")
+        self.logger.error(traceback.format_exc())
+        self.logger.error("=" * 80)
+    
+    # Removed on_interaction handler as it might be interfering with command processing
+    
     async def on_ready(self):
         """Called when the bot is ready."""
         self.logger.info(f'{self.user} has connected to Discord!')
         self.logger.info(f'Bot is in {len(self.guilds)} guilds')
+        
+        # Initialize bot components if not already done
+        if not self._initialized:
+            self.logger.info("Starting bot initialization...")
+            await self._initialize_bot()
+            self._initialized = True
+        else:
+            self.logger.info("Bot already initialized, skipping...")
+        
+        # Check what commands are available
+        self.logger.info(f"Available commands: {[cmd.name for cmd in self.commands]}")
+        self.logger.info(f"Available slash commands: {[cmd.name for cmd in self.pending_application_commands]}")
+        
+        # Sync slash commands
+        try:
+            self.logger.info("Syncing slash commands...")
+            self.logger.info(f"Bot has {len(self.pending_application_commands)} pending commands")
+            
+            # Debug: Print command details
+            for cmd in self.pending_application_commands:
+                self.logger.info(f"Command: {cmd.name} - Type: {type(cmd)} - Guild IDs: {getattr(cmd, 'guild_ids', 'None')}")
+            
+            # Try the basic sync_commands method
+            self.logger.info("Calling sync_commands()...")
+            synced = await self.sync_commands()
+            
+            self.logger.info(f"sync_commands() returned: {synced} (type: {type(synced)})")
+            
+            if synced is not None:
+                if isinstance(synced, list):
+                    self.logger.info(f"Successfully synced {len(synced)} commands")
+                    for cmd in synced:
+                        self.logger.info(f"  - Synced: {cmd.name}")
+                else:
+                    self.logger.info(f"Sync returned non-list: {synced}")
+            else:
+                self.logger.info("✅ Commands sync initiated (py-cord returns None on success)")
+                self.logger.info("Guild-specific commands should appear in Discord within 1-2 minutes")
+                self.logger.info("If commands don't appear, check bot permissions and try restarting Discord")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to sync commands: {e}", exc_info=True)
     
     async def on_error(self, event, *args, **kwargs):
         """Basic global error handler."""
@@ -145,6 +278,64 @@ class GameNightBot(commands.Bot):
     
     async def on_application_command_error(self, interaction, error):
         """Handle application command (slash command) errors."""
+        import traceback
+        import sys
+        
+        self.logger.error("=" * 80)
+        self.logger.error("APPLICATION COMMAND ERROR - DETAILED ANALYSIS")
+        self.logger.error("=" * 80)
+        
+        # Command information
+        self.logger.error(f"Command Name: {interaction.command.name if interaction.command else 'Unknown'}")
+        self.logger.error(f"Command Qualified Name: {interaction.command.qualified_name if interaction.command else 'Unknown'}")
+        self.logger.error(f"Command Module: {interaction.command.callback.__module__ if interaction.command and hasattr(interaction.command, 'callback') else 'Unknown'}")
+        self.logger.error(f"Command Function: {interaction.command.callback.__name__ if interaction.command and hasattr(interaction.command, 'callback') else 'Unknown'}")
+        
+        # User and guild information
+        self.logger.error(f"User ID: {interaction.user.id}")
+        self.logger.error(f"User Name: {interaction.user.name}")
+        self.logger.error(f"User Type: {type(interaction.user)}")
+        self.logger.error(f"Guild ID: {interaction.guild.id if interaction.guild else 'None'}")
+        self.logger.error(f"Guild Name: {interaction.guild.name if interaction.guild else 'None'}")
+        
+        # Error details
+        self.logger.error(f"Error Message: {str(error)}")
+        self.logger.error(f"Error Type: {type(error).__name__}")
+        self.logger.error(f"Error Module: {type(error).__module__}")
+        self.logger.error(f"Error Args: {error.args}")
+        
+        # Check for nested errors
+        if hasattr(error, 'original'):
+            self.logger.error(f"Original Error: {error.original}")
+            self.logger.error(f"Original Error Type: {type(error.original).__name__}")
+            self.logger.error(f"Original Error Module: {type(error.original).__module__}")
+        
+        if hasattr(error, '__cause__') and error.__cause__:
+            self.logger.error(f"Error Cause: {error.__cause__}")
+            self.logger.error(f"Cause Type: {type(error.__cause__).__name__}")
+        
+        if hasattr(error, '__context__') and error.__context__:
+            self.logger.error(f"Error Context: {error.__context__}")
+            self.logger.error(f"Context Type: {type(error.__context__).__name__}")
+        
+        # Full stack trace
+        self.logger.error("FULL STACK TRACE:")
+        if hasattr(error, '__traceback__') and error.__traceback__:
+            tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
+            for line in tb_lines:
+                self.logger.error(line.rstrip())
+        else:
+            self.logger.error("No traceback available")
+        
+        # Additional debugging for PermissionDeniedError
+        if isinstance(error, Exception) and "PermissionDeniedError" in str(type(error)):
+            self.logger.error("PERMISSION ERROR ANALYSIS:")
+            self.logger.error(f"Error string contains: {str(error)}")
+            if hasattr(error, 'user_message'):
+                self.logger.error(f"User message: {error.user_message}")
+        
+        self.logger.error("=" * 80)
+        
         from utils.exceptions import (
             PermissionDeniedError, ValidationError, RateLimitedError,
             GameNightBotException
@@ -165,6 +356,13 @@ class GameNightBot(commands.Bot):
                 
             else:
                 self.logger.error(f"Application command error in {interaction.command}: {error}", exc_info=True)
+                self.logger.error(f"Error type: {type(error)}")
+                self.logger.error(f"Error args: {error.args}")
+                if hasattr(error, '__cause__'):
+                    self.logger.error(f"Error cause: {error.__cause__}")
+                if hasattr(error, '__traceback__'):
+                    import traceback
+                    self.logger.error(f"Full traceback: {''.join(traceback.format_tb(error.__traceback__))}")
                 
                 if not interaction.response.is_done():
                     await interaction.response.send_message(

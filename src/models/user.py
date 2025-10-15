@@ -3,10 +3,19 @@ User model for Discord user profiles and preferences.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional
 from pydantic import Field, field_validator
 
 from .base import BaseDocument
+
+
+class NotificationTiming(str, Enum):
+    """Notification timing preferences."""
+    IMMEDIATE = "IMMEDIATE"
+    HOUR_BEFORE = "HOUR_BEFORE"
+    DAY_BEFORE = "DAY_BEFORE"
+    BOTH_REMINDERS = "BOTH_REMINDERS"
 
 
 class GameInterest(BaseDocument):

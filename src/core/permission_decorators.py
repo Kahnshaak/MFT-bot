@@ -45,8 +45,8 @@ def require_permission(
                     interaction = args[0]
                     user = interaction.user
                     guild_id = str(interaction.guild.id) if interaction.guild else None
-                elif hasattr(args[0], 'bot') and hasattr(args[0], 'security'):
-                    # Cog method
+                elif hasattr(args[0], 'bot'):
+                    # Cog method - check if second argument is interaction/context
                     cog = args[0]
                     if len(args) > 1:
                         if isinstance(args[1], commands.Context):

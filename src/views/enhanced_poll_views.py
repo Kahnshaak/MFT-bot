@@ -667,19 +667,68 @@ class TieResolutionButton(discord.ui.Button):
             )
             return
         
-        # Resolve tie
-        success = await view.cog.poll_manager.admin_resolve_tie(
-            event_id=str(view.event.id),
-            poll_type=view.poll.poll_type,
-            chosen_option_id=self.option.option_id
-        )
-        
-        if success:
-            await interaction.response.edit_message(
-                content=f"✅ Tie resolved! Selected: **{self.option.label}**",
-                view=None
-            )
-        else:
+        try:
+            # Resolve tie by calling the appropriate poll closing method with admin selection
+            if view.poll.poll_type == PollType.DATE:
+                await view.cog.close_date_poll_and_start_time_poll(view.event, self.option.option_id)
+                
+                # Get updated event and time poll
+                updated_event = await view.cog.get_event(view.event.id)
+                time_poll = updated_event.get_poll(PollType.TIME)
+                
+                # Create time poll embed and view
+                embed = view.cog.create_enhanced_poll_embed(time_poll, updated_event)
+                poll_view = EnhancedTimePollView(view.cog, updated_event, time_poll)
+                
+                await interaction.response.edit_message(
+                    content=f"✅ Tie resolved! Selected: **{self.option.label}**\n\n"
+                            f"⏰ **Time Poll Started for {updated_event.title}**\n"
+                            f"Vote for your preferred time:",
+                    embed=embed,
+                    view=poll_view
+                )
+                
+            elif view.poll.poll_type == PollType.TIME:
+                await view.cog.close_time_poll_and_start_game_poll(view.event, self.option.option_id)
+                
+                # Get updated event and game poll
+                updated_event = await view.cog.get_event(view.event.id)
+                game_poll = updated_event.get_poll(PollType.GAME)
+                
+                # Create game poll embed and view
+                from cogs.events import GamePollView
+                embed = view.cog.create_poll_embed(game_poll, updated_event)
+                poll_view = GamePollView(view.cog, updated_event, game_poll)
+                
+                await interaction.response.edit_message(
+                    content=f"✅ Tie resolved! Selected: **{self.option.label}**\n\n"
+                            f"🎮 **Game Poll Started for {updated_event.title}**\n"
+                            f"Vote for your preferred games:",
+                    embed=embed,
+                    view=poll_view
+                )
+                
+            elif view.poll.poll_type == PollType.GAME:
+                await view.cog.close_game_poll_and_schedule_event(view.event, self.option.option_id)
+                
+                # Get updated event
+                updated_event = await view.cog.get_event(view.event.id)
+                
+                # Create final event embed
+                from cogs.events import EventManagementView
+                embed = view.cog.create_event_embed(updated_event)
+                management_view = EventManagementView(view.cog, updated_event)
+                
+                await interaction.response.edit_message(
+                    content=f"✅ Tie resolved! Selected: **{self.option.label}**\n\n"
+                            f"✅ **Event Scheduled!**\n"
+                            f"**{updated_event.title}** is now fully scheduled and ready!",
+                    embed=embed,
+                    view=management_view
+                )
+                
+        except Exception as e:
+            view.cog.logger.error(f"Error resolving tie: {e}", exc_info=True)
             await interaction.response.send_message(
                 "❌ Failed to resolve tie. Please try again.",
                 ephemeral=True

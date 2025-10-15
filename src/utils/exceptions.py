@@ -334,6 +334,30 @@ class PollEdgeCaseError(PollError):
         )
 
 
+class PollTieError(PollError):
+    """Raised when poll results in a tie requiring admin resolution."""
+    
+    def __init__(self, message: str, tied_options: List[str], poll_type: Optional[str] = None, **kwargs):
+        # Merge poll_type into details
+        details = {
+            "tied_options": tied_options,
+            "edge_case_type": "tie_resolution_required"
+        }
+        if poll_type:
+            details["poll_type"] = poll_type
+        
+        # Call GameNightBotException directly to avoid PollError's details handling
+        GameNightBotException.__init__(
+            self,
+            message,
+            error_code=ErrorCode.POLL_EDGE_CASE,
+            details=details,
+            user_message="The poll resulted in a tie. An admin needs to select the winner.",
+            **kwargs
+        )
+        self.tied_options = tied_options
+
+
 class UserDepartedError(GameNightBotException):
     """Raised when user leaves server during operations."""
     

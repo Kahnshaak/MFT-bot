@@ -9,10 +9,23 @@ import discord
 
 from core.event_bus import EventBus, EventType
 from models.notification import (
-    Notification, NotificationType, NotificationStatus
+    Notification, NotificationType, NotificationStatus, NotificationChannel
 )
-from models.user import User
+from models.user import User, NotificationTiming
 from utils.logging_config import get_logger
+
+
+# Default notification templates
+DEFAULT_TEMPLATES = {
+    NotificationType.EVENT_REMINDER: {
+        "title": "🎮 Game Night Reminder",
+        "message": "**{event_title}** is coming up!\n\n📅 Date: {event_date}\n⏰ Time: {event_time}\n🎯 Game: {selected_game}\n\nDon't forget to RSVP!"
+    },
+    NotificationType.EVENT_CANCELLED: {
+        "title": "❌ Event Cancelled",
+        "message": "**{event_title}** has been cancelled.\n\nWe'll see you at the next game night!"
+    }
+}
 
 
 class NotificationManager:
@@ -35,10 +48,20 @@ class NotificationManager:
     
     async def start(self):
         """Start the notification manager."""
+        # Start background task to process scheduled notifications
+        self.processing_task = asyncio.create_task(self._process_scheduled_notifications())
         get_logger(__name__).info("Notification manager started")
     
     async def stop(self):
         """Stop the notification manager."""
+        # Cancel processing task
+        if hasattr(self, 'processing_task') and not self.processing_task.done():
+            self.processing_task.cancel()
+            try:
+                await self.processing_task
+            except asyncio.CancelledError:
+                pass
+        
         # Cancel all scheduled tasks
         for task in self.scheduled_tasks.values():
             if not task.done():
@@ -46,6 +69,39 @@ class NotificationManager:
         
         self.scheduled_tasks.clear()
         get_logger(__name__).info("Notification manager stopped")
+    
+    async def _process_scheduled_notifications(self):
+        """Background task to process scheduled notifications."""
+        get_logger(__name__).info("Starting notification processing task")
+        
+        while True:
+            try:
+                # Check for due notifications every 30 seconds
+                await asyncio.sleep(30)
+                
+                # Find notifications that are due
+                due_notifications = await self.database.notifications.find({
+                    "status": NotificationStatus.SCHEDULED.value,
+                    "scheduled_for": {"$lte": datetime.utcnow()}
+                }).to_list(length=100)
+                
+                for notification_data in due_notifications:
+                    notification_id = str(notification_data["_id"])
+                    
+                    # Skip if already being processed
+                    if notification_id in self.scheduled_tasks:
+                        continue
+                    
+                    # Process notification
+                    await self._send_notification(notification_id)
+                
+            except asyncio.CancelledError:
+                get_logger(__name__).info("Notification processing task cancelled")
+                break
+            except Exception as e:
+                get_logger(__name__).error(f"Error in notification processing: {e}", exc_info=True)
+                # Continue processing despite errors
+                await asyncio.sleep(5)
     
     async def schedule_reminder(
         self,
@@ -205,10 +261,182 @@ class NotificationManager:
         except Exception as e:
             get_logger(__name__).error(f"Error sending notification {notification_id}: {e}")
     
+    async def schedule_event_reminders(
+        self,
+        event_id: str,
+        guild_id: str,
+        event_title: str,
+        event_datetime: datetime,
+        selected_game: Optional[str] = None
+    ) -> List[str]:
+        """
+        Schedule 24-hour and 1-hour reminders for an event.
+        
+        Args:
+            event_id: Event ID
+            guild_id: Discord guild ID
+            event_title: Event title
+            event_datetime: When the event starts
+            selected_game: Selected game name
+            
+        Returns:
+            List of notification IDs created
+        """
+        notification_ids = []
+        
+        # Get all users who RSVP'd YES to the event
+        event_data = await self.database.events.find_one({"_id": event_id})
+        if not event_data:
+            get_logger(__name__).warning(f"Event {event_id} not found for reminder scheduling")
+            return notification_ids
+        
+        # Get attendee list from RSVPs
+        rsvps = event_data.get("rsvps", {})
+        attendee_ids = [user_id for user_id, rsvp in rsvps.items() if rsvp.get("status") == "YES"]
+        
+        if not attendee_ids:
+            get_logger(__name__).info(f"No attendees for event {event_id}, skipping reminders")
+            return notification_ids
+        
+        # Filter users based on their notification preferences
+        users_for_24h = []
+        users_for_1h = []
+        
+        for user_id in attendee_ids:
+            user_data = await self.database.users.find_one({
+                "user_id": user_id,
+                "guild_id": guild_id
+            })
+            
+            # Check if user wants event reminders (default True)
+            if user_data:
+                event_reminders = user_data.get("event_reminders", True)
+                if not event_reminders:
+                    continue
+            
+            # Add to both lists by default
+            users_for_24h.append(user_id)
+            users_for_1h.append(user_id)
+        
+        # Prepare message content
+        event_date_str = event_datetime.strftime("%A, %B %d, %Y")
+        event_time_str = event_datetime.strftime("%I:%M %p")
+        game_str = selected_game or "TBD"
+        
+        message = f"**{event_title}** is coming up!\n\n📅 Date: {event_date_str}\n⏰ Time: {event_time_str}\n🎯 Game: {game_str}\n\nSee you there!"
+        
+        # Schedule 24-hour reminder
+        reminder_24h = event_datetime - timedelta(hours=24)
+        if reminder_24h > datetime.utcnow() and users_for_24h:
+            notification_id = await self.schedule_reminder(
+                event_id=event_id,
+                guild_id=guild_id,
+                recipient_user_ids=users_for_24h,
+                reminder_time=reminder_24h,
+                message=f"⏰ **24 Hour Reminder**\n\n{message}"
+            )
+            notification_ids.append(notification_id)
+            get_logger(__name__).info(f"Scheduled 24-hour reminder for {len(users_for_24h)} users")
+        
+        # Schedule 1-hour reminder
+        reminder_1h = event_datetime - timedelta(hours=1)
+        if reminder_1h > datetime.utcnow() and users_for_1h:
+            notification_id = await self.schedule_reminder(
+                event_id=event_id,
+                guild_id=guild_id,
+                recipient_user_ids=users_for_1h,
+                reminder_time=reminder_1h,
+                message=f"⏰ **1 Hour Reminder**\n\n{message}"
+            )
+            notification_ids.append(notification_id)
+            get_logger(__name__).info(f"Scheduled 1-hour reminder for {len(users_for_1h)} users")
+        
+        return notification_ids
+    
+    async def send_immediate_notification(
+        self,
+        notification_type: NotificationType,
+        guild_id: str,
+        recipient_user_ids: List[str],
+        context_data: Dict[str, Any]
+    ) -> bool:
+        """
+        Send an immediate notification to users.
+        
+        Args:
+            notification_type: Type of notification
+            guild_id: Discord guild ID
+            recipient_user_ids: List of user IDs to notify
+            context_data: Context data for template rendering
+            
+        Returns:
+            True if sent successfully
+        """
+        template = self.templates.get(notification_type)
+        if not template:
+            get_logger(__name__).warning(f"No template found for {notification_type}")
+            return False
+        
+        title = template["title"]
+        message = template["message"].format(**context_data)
+        
+        return await self.send_notification(
+            guild_id=guild_id,
+            recipient_user_ids=recipient_user_ids,
+            message=message,
+            title=title
+        )
+    
     # Event handlers
     async def _on_event_scheduled(self, event_data):
         """Handle event scheduling by creating reminders."""
-        pass  # Simplified - no automatic reminders
+        try:
+            data = event_data.data
+            event_id = data.get("event_id")
+            guild_id = data.get("guild_id", event_data.guild_id)
+            title = data.get("title")
+            scheduled_date = data.get("scheduled_date")
+            scheduled_time = data.get("scheduled_time")
+            
+            if not all([event_id, guild_id, title, scheduled_date, scheduled_time]):
+                get_logger(__name__).warning("Missing required data for event reminder scheduling")
+                return
+            
+            # Parse datetime
+            from datetime import date, time
+            event_date = date.fromisoformat(scheduled_date)
+            event_time = time.fromisoformat(scheduled_time)
+            event_datetime = datetime.combine(event_date, event_time)
+            
+            # Get event details for game info
+            event_doc = await self.database.events.find_one({"_id": event_id})
+            selected_game = None
+            if event_doc:
+                # Try to get selected game from game poll
+                polls = event_doc.get("polls", [])
+                for poll in polls:
+                    if poll.get("poll_type") == "GAME":
+                        options = poll.get("options", [])
+                        if options:
+                            # Find option with most votes
+                            max_votes = max(opt.get("vote_count", 0) for opt in options)
+                            for opt in options:
+                                if opt.get("vote_count", 0) == max_votes:
+                                    selected_game = opt.get("label")
+                                    break
+                        break
+            
+            # Schedule reminders
+            await self.schedule_event_reminders(
+                event_id=event_id,
+                guild_id=guild_id,
+                event_title=title,
+                event_datetime=event_datetime,
+                selected_game=selected_game
+            )
+            
+        except Exception as e:
+            get_logger(__name__).error(f"Error scheduling event reminders: {e}", exc_info=True)
     
     async def _on_event_cancelled(self, event_data):
         """Handle event cancellation."""

@@ -2,7 +2,7 @@
 Simple security manager for basic permission checking.
 """
 
-from typing import Set
+from typing import Set, Union
 from enum import Enum
 
 import discord
@@ -18,6 +18,7 @@ class Permission(Enum):
     VIEW_EVENTS = "view_events"
     CREATE_EVENTS = "create_events"
     MANAGE_OWN_EVENTS = "manage_own_events"
+    MANAGE_EVENTS = "manage_events"  # Alias for MANAGE_OWN_EVENTS
     
     # Administrative permissions
     MANAGE_ALL_EVENTS = "manage_all_events"
@@ -33,12 +34,12 @@ class SecurityManager:
     def __init__(self, settings=None):
         self.settings = settings
     
-    def get_user_permissions(self, user: discord.Member) -> Set[Permission]:
+    def get_user_permissions(self, user: Union[discord.Member, discord.User]) -> Set[Permission]:
         """
         Get basic permissions for a user based on Discord permissions.
         
         Args:
-            user: Discord member
+            user: Discord member or user
             
         Returns:
             Set of permissions the user has
@@ -49,15 +50,16 @@ class SecurityManager:
         permissions.add(Permission.CREATE_EVENTS)
         permissions.add(Permission.MANAGE_OWN_EVENTS)
         
-        # Admin permissions
-        if user.guild_permissions.administrator or user.guild_permissions.manage_guild:
-            permissions.add(Permission.MANAGE_ALL_EVENTS)
-            permissions.add(Permission.MANAGE_RECURRING)
-            permissions.add(Permission.CONFIGURE_BOT)
+        # Admin permissions (only available for Members, not Users)
+        if isinstance(user, discord.Member):
+            if user.guild_permissions.administrator or user.guild_permissions.manage_guild:
+                permissions.add(Permission.MANAGE_ALL_EVENTS)
+                permissions.add(Permission.MANAGE_RECURRING)
+                permissions.add(Permission.CONFIGURE_BOT)
         
         return permissions
     
-    def check_permission(self, user: discord.Member, required_permission: Permission) -> bool:
+    def check_permission(self, user: Union[discord.Member, discord.User], required_permission: Permission) -> bool:
         """
         Check if a user has a specific permission.
         
@@ -71,7 +73,7 @@ class SecurityManager:
         user_permissions = self.get_user_permissions(user)
         return required_permission in user_permissions
     
-    def require_permission(self, user: discord.Member, required_permission: Permission) -> None:
+    def require_permission(self, user: Union[discord.Member, discord.User], required_permission: Permission) -> None:
         """
         Require a user to have a specific permission, raise exception if not.
         

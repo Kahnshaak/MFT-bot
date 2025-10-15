@@ -225,59 +225,6 @@ class GameRepository(BaseRepository[Game]):
             "name": {"$regex": f"^{name}$", "$options": "i"}
         })
         return results[0] if results else None
-        """Get all frequency limits for a user."""
-        return await self.find({"user_id": user_id})
-    
-    async def create_or_update_limit(
-        self,
-        user_id: str,
-        game_name: str,
-        max_pings_per_day: int = 3,
-        max_pings_per_week: int = 10
-    ) -> str:
-        """Create or update frequency limit for user and game."""
-        existing = await self.get_by_user_and_game(user_id, game_name)
-        
-        if existing:
-            existing.max_pings_per_day = max_pings_per_day
-            existing.max_pings_per_week = max_pings_per_week
-            await self.update(str(existing.id), existing)
-            return str(existing.id)
-        else:
-            limit = NotificationFrequencyLimit(
-                user_id=user_id,
-                game_name=game_name,
-                max_pings_per_day=max_pings_per_day,
-                max_pings_per_week=max_pings_per_week
-            )
-            return await self.create(limit)
-    
-    async def can_send_ping(self, user_id: str, game_name: str) -> bool:
-        """Check if a ping can be sent to user for game."""
-        limit = await self.get_by_user_and_game(user_id, game_name)
-        if not limit:
-            # No limit set, use default
-            limit = NotificationFrequencyLimit(
-                user_id=user_id,
-                game_name=game_name
-            )
-        
-        return limit.can_send_ping()
-    
-    async def record_ping_sent(self, user_id: str, game_name: str) -> bool:
-        """Record that a ping was sent."""
-        limit = await self.get_by_user_and_game(user_id, game_name)
-        if not limit:
-            # Create default limit
-            limit = NotificationFrequencyLimit(
-                user_id=user_id,
-                game_name=game_name
-            )
-            limit_id = await self.create(limit)
-            limit = await self.get_by_id(limit_id)
-        
-        limit.record_ping_sent()
-        return await self.update(str(limit.id), limit)
 
 
 class RepositoryManager:
@@ -296,7 +243,6 @@ class RepositoryManager:
         self.recurring_schedules = RecurringScheduleRepository(db_manager, RecurringSchedule)
         self.guild_configs = GuildConfigRepository(db_manager, GuildConfig)
         self.games = GameRepository(db_manager, Game)
-        self.notification_frequency = NotificationFrequencyRepository(db_manager, NotificationFrequencyLimit)
     
     async def ensure_guild_config(self, guild_id: str, guild_name: str = None) -> GuildConfig:
         """

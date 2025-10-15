@@ -9,9 +9,9 @@ from difflib import SequenceMatcher
 
 import discord
 from discord.ext import commands
-from discord import app_commands
 
-from models.game import Game, GameCategory, GameAlias, NotificationFrequencyLimit
+from models.game import Game
+# GameCategory, GameAlias, NotificationFrequencyLimit not yet implemented
 from models.user import User
 from models.repositories import RepositoryManager
 from models.base import ValidationMixin
@@ -331,6 +331,12 @@ class GamesCog(commands.Cog, LoggerMixin):
         self.event_bus.subscribe(EventType.USER_GAME_INTEREST_ADDED, self._on_game_interest_added)
         self.event_bus.subscribe(EventType.USER_GAME_INTEREST_REMOVED, self._on_game_interest_removed)
     
+    # Create command group for /games commands
+    games = discord.SlashCommandGroup(
+        name="games",
+        description="Manage game interests and notifications"
+    )
+    
     async def _on_game_interest_added(self, event_data):
         """Handle game interest added event."""
         try:
@@ -384,6 +390,194 @@ class GamesCog(commands.Cog, LoggerMixin):
             
         except Exception as e:
             self.logger.error(f"Error updating game statistics: {e}", exc_info=True)
+    
+    @games.command(
+        name="add",
+        description="Add a game to your interest list"
+    )
+    async def games_add_command(
+        self, 
+        ctx: discord.ApplicationContext,
+        name: discord.Option(str, "Name of the game you're interested in", required=True)
+    ):
+        """Add game interest - implements requirement 4.1."""
+        interaction = ctx.interaction
+        try:
+            # Validate and sanitize game name
+            game_name = name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message(
+                    "❌ Game name must be 1-100 characters.", 
+                    ephemeral=True
+                )
+                return
+            
+            game_name = ValidationMixin.sanitize_text(game_name, 100)
+            if not game_name:
+                await interaction.response.send_message(
+                    "❌ Invalid game name.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get or create user
+            user = await self.repositories.ensure_user_profile(
+                str(interaction.user.id),
+                str(interaction.guild.id),
+                interaction.user.display_name
+            )
+            
+            # Add game interest
+            success = user.add_game_interest(game_name, notification_enabled=True)
+            
+            if success:
+                # Update in database
+                await self.repositories.users.update(str(user.id), user)
+                
+                await interaction.response.send_message(
+                    f"✅ Added **{game_name}** to your interests! You'll be notified when others want to play.",
+                    ephemeral=True
+                )
+                
+                # Emit event
+                await self.event_bus.emit(
+                    EventType.USER_GAME_INTEREST_ADDED,
+                    {
+                        "user_id": str(interaction.user.id),
+                        "guild_id": str(interaction.guild.id),
+                        "game_name": game_name
+                    },
+                    source="games_cog",
+                    guild_id=str(interaction.guild.id),
+                    user_id=str(interaction.user.id)
+                )
+            else:
+                await interaction.response.send_message(
+                    f"❌ You're already interested in **{game_name}**.",
+                    ephemeral=True
+                )
+            
+        except Exception as e:
+            self.logger.error(f"Error adding game interest: {e}", exc_info=True)
+            await interaction.response.send_message(
+                "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
+                ephemeral=True
+            )
+    
+    @games.command(
+        name="ping",
+        description="Notify users interested in a specific game"
+    )
+    async def games_ping_command(
+        self,
+        ctx: discord.ApplicationContext,
+        name: discord.Option(str, "Name of the game to ping for", required=True)
+    ):
+        """Ping users interested in a game - implements requirement 4.2."""
+        interaction = ctx.interaction
+        try:
+            # Validate and sanitize game name
+            game_name = name.strip()
+            if not game_name or len(game_name) > 100:
+                await interaction.response.send_message(
+                    "❌ Game name must be 1-100 characters.", 
+                    ephemeral=True
+                )
+                return
+            
+            # Get interested users
+            interested_users = await self.repositories.users.get_users_interested_in_game(
+                str(interaction.guild.id),
+                game_name
+            )
+            
+            if not interested_users:
+                await interaction.response.send_message(
+                    f"❌ No users are interested in **{game_name}**. They can use `/games add {game_name}` to get notified!",
+                    ephemeral=True
+                )
+                return
+            
+            # Filter out the user who initiated the ping
+            pingable_users = [u for u in interested_users if u.user_id != str(interaction.user.id)]
+            
+            if not pingable_users:
+                await interaction.response.send_message(
+                    f"❌ You're the only one interested in **{game_name}**. Invite others to use `/games add {game_name}`!",
+                    ephemeral=True
+                )
+                return
+            
+            # Create ping message with mentions
+            mentions = []
+            for user in pingable_users:
+                try:
+                    discord_user = interaction.guild.get_member(int(user.user_id))
+                    if discord_user:
+                        mentions.append(discord_user.mention)
+                except ValueError:
+                    continue
+            
+            if not mentions:
+                await interaction.response.send_message(
+                    f"❌ No users available to ping for **{game_name}**.",
+                    ephemeral=True
+                )
+                return
+            
+            # Create embed for the ping
+            embed = discord.Embed(
+                title=f"🎮 Game Night Ping: {game_name}",
+                description=f"{interaction.user.mention} wants to play **{game_name}**!",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
+            
+            embed.add_field(
+                name="Interested Players",
+                value=" ".join(mentions),
+                inline=False
+            )
+            
+            embed.set_footer(
+                text=f"Use /games add {game_name} to get pinged for this game"
+            )
+            
+            # Send the ping
+            await interaction.response.send_message(
+                content=" ".join(mentions),
+                embed=embed
+            )
+            
+            # Update game statistics
+            await self._update_game_statistics(
+                str(interaction.guild.id),
+                game_name,
+                'ping_sent'
+            )
+            
+            # Emit event
+            await self.event_bus.emit(
+                EventType.NOTIFICATION_SENT,
+                {
+                    "type": "game_ping",
+                    "game_name": game_name,
+                    "sender_id": str(interaction.user.id),
+                    "recipient_count": len(pingable_users),
+                    "guild_id": str(interaction.guild.id)
+                },
+                source="games_cog",
+                guild_id=str(interaction.guild.id),
+                user_id=str(interaction.user.id)
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error pinging game: {e}", exc_info=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ Something went wrong. Please try again or contact an administrator if the issue persists.",
+                    ephemeral=True
+                )
     
     @app_commands.command(
         name="games-add", 

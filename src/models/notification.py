@@ -14,13 +14,23 @@ class NotificationType(str, Enum):
     """Types of notifications."""
     EVENT_REMINDER = "EVENT_REMINDER"
     GAME_PING = "GAME_PING"
+    POLL_CLOSING = "POLL_CLOSING"
+    EVENT_CANCELLED = "EVENT_CANCELLED"
 
 
 class NotificationStatus(str, Enum):
     """Notification delivery status."""
     SCHEDULED = "SCHEDULED"
     SENT = "SENT"
+    FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+
+
+class NotificationChannel(str, Enum):
+    """Notification delivery channels."""
+    DM = "DM"
+    SERVER = "SERVER"
+    BOTH = "BOTH"
 
 
 class Notification(BaseDocument):
