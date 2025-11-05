@@ -247,9 +247,9 @@ class MigrationManager(LoggerMixin):
         
         # Create indexes for events collection
         events_indexes = [
-            IndexModel([("guild_id", 1), ("state", 1), ("created_at", -1)]),
+            IndexModel([("guild_id", 1), ("status", 1), ("created_at", -1)]),
             IndexModel([("guild_id", 1), ("discord_event_id", 1)]),
-            IndexModel([("guild_id", 1), ("schedule.selected_date", 1)]),
+            IndexModel([("guild_id", 1), ("expires_at", 1)]),
             IndexModel([("creator_id", 1), ("created_at", -1)])
         ]
         await db_manager.database.events.create_indexes(events_indexes)

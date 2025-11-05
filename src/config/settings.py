@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     command_prefix: str = Field(default="!", env="COMMAND_PREFIX")
     max_poll_options: int = Field(default=25, env="MAX_POLL_OPTIONS")
     default_poll_timeout_hours: int = Field(default=24, env="DEFAULT_POLL_TIMEOUT_HOURS")
+    debug_guild_ids: Optional[str] = Field(default=None, env="DEBUG_GUILD_IDS")
     
     # Notification Configuration
     notification_retry_attempts: int = Field(default=3, env="NOTIFICATION_RETRY_ATTEMPTS")
@@ -92,3 +93,10 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.environment.lower() == "production"
+    
+    @property
+    def debug_guild_ids_list(self) -> Optional[List[int]]:
+        """Get debug guild IDs as a list of integers."""
+        if not self.debug_guild_ids:
+            return None
+        return [int(gid.strip()) for gid in self.debug_guild_ids.split(",") if gid.strip()]

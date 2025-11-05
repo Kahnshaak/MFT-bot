@@ -17,7 +17,7 @@ except ImportError:
     from src.utils.logging_config import get_logger
 
 from .base import BaseDocument
-from .event import Event, EventState, RSVPStatus
+from .event import Event
 from .user import User, GameInterest
 from .recurring import RecurringSchedule, ScheduleStatus
 from .guild import GuildConfig
@@ -137,18 +137,19 @@ class EventRepository(BaseRepository[Event]):
         """Get events created by a user."""
         return await self.find({"creator_id": creator_id, "guild_id": guild_id}, sort=[("created_at", -1)])
     
-    async def add_rsvp(self, event_id: str, user_id: str, status: RSVPStatus) -> bool:
-        """Add or update RSVP for an event."""
-        try:
-            rsvp_data = {"user_id": user_id, "status": status.value}
-            return await self.db.update_one(
-                self.collection_name,
-                {"_id": ObjectId(event_id)},
-                {"$set": {f"rsvps.{user_id}": rsvp_data, "updated_at": datetime.utcnow()}}
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to add RSVP: {str(e)}")
-            raise DatabaseError(f"Failed to add RSVP: {str(e)}")
+    # RSVP functionality removed in simplified Event model
+    # async def add_rsvp(self, event_id: str, user_id: str, status: str) -> bool:
+    #     """Add or update RSVP for an event."""
+    #     try:
+    #         rsvp_data = {"user_id": user_id, "status": status}
+    #         return await self.db.update_one(
+    #             self.collection_name,
+    #             {"_id": ObjectId(event_id)},
+    #             {"$set": {f"rsvps.{user_id}": rsvp_data, "updated_at": datetime.utcnow()}}
+    #         )
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to add RSVP: {str(e)}")
+    #         raise DatabaseError(f"Failed to add RSVP: {str(e)}")
 
 
 class UserRepository(BaseRepository[User]):

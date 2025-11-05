@@ -37,18 +37,19 @@ class GameNightBot(commands.Bot):
         intents.guild_messages = True
         intents.guild_reactions = True
         
+        # Initialize settings first to get debug_guild_ids
+        self.settings = Settings()
+        
         super().__init__(
             command_prefix='!',  # Fallback prefix, mainly using slash commands
             intents=intents,
-            help_command=None
+            help_command=None,
+            debug_guilds=self.settings.debug_guild_ids_list  # For instant command sync in dev
         )
         
         # Set up logging first
         self.logger = logging.getLogger(__name__)
         self.logger.info("Bot instance created")
-        
-        # Initialize core components - only essential ones
-        self.settings = Settings()
         self.database: Optional[DatabaseManager] = None
         self.event_bus: Optional[EventBus] = None
         self.security: Optional[SecurityManager] = None
@@ -142,28 +143,22 @@ class GameNightBot(commands.Bot):
             # Load cogs with error handling
             self.logger.info("Loading cogs...")
             cogs_to_load = [
-                'cogs.events',  # Only load events cog for now
-                # 'cogs.users', 
-                # 'cogs.games',
-                # 'cogs.notifications',
-                # 'cogs.timestamps',
-                # 'cogs.admin',
-                # 'cogs.recurring'
+                'cogs.events',
+                'cogs.users', 
+                'cogs.games',
+                'cogs.notifications',
+                'cogs.timestamps',
+                'cogs.admin',
+                'cogs.recurring'
             ]
             
-            # Load events cog manually for now
-            try:
-                self.logger.info("Loading EventsCog manually...")
-                from cogs.events import EventsCog
-                cog_instance = EventsCog(self)
-                self.logger.info("EventsCog instance created")
-                result = self.add_cog(cog_instance)
-                self.logger.info(f"add_cog returned: {result}")
-                if result is not None:
-                    await result
-                self.logger.info("✅ Loaded EventsCog successfully")
-            except Exception as e:
-                self.logger.error(f"❌ Failed to load EventsCog: {e}", exc_info=True)
+            for cog in cogs_to_load:
+                try:
+                    self.logger.info(f"Loading cog: {cog}")
+                    await self.load_extension(cog)
+                    self.logger.info(f"✅ Loaded cog: {cog}")
+                except Exception as e:
+                    self.logger.error(f"❌ Failed to load cog {cog}: {e}", exc_info=True)
             
             self.logger.info("Bot initialization completed successfully")
             
@@ -193,6 +188,8 @@ class GameNightBot(commands.Bot):
         """Called when the bot is ready."""
         self.logger.info(f'{self.user} has connected to Discord!')
         self.logger.info(f'Bot is in {len(self.guilds)} guilds')
+        for guild in self.guilds:
+            self.logger.info(f'  - {guild.name} (ID: {guild.id})')
         
         # Initialize bot components if not already done
         if not self._initialized:
