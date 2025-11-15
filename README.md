@@ -2,6 +2,8 @@
 
 A comprehensive Discord bot for organizing game nights with automated scheduling, polling, and event management.
 
+This bot was also my attempt at vibe coding an application... it has not gone well at all and will definitely just need to be written from scratch. As it stands now I don't have time to complete it, but we will see if I can in the (hopefully) near future.
+
 ## Features
 
 - **Automated Event Creation**: Create events with interactive date, time, and game selection polls
